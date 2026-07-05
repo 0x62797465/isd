@@ -96,14 +96,15 @@ void apply_permutation(uint16_t* permutation) {
 }
 
 int main(int argc, char *argv[]) {
-    uint16_t seed = time(NULL);
     
-    if (argc != 4) {
-        printf("Usage: %s <matrix.txt> <syndrome.txt> <target weight>\n", argv[0]);
+    if (argc != 5) {
+        printf("Usage: %s <matrix.txt> <syndrome.txt> <target weight> <random seed>\n", argv[0]);
         printf("Matrix identity is not infered; assumes no transposition\n");
         exit(-1);
     }
 
+    uint16_t seed = atoi(argv[4]);
+ 
     o_parse(argv);
     uint16_t best_weight = 0;
     long cores = sysconf(_SC_NPROCESSORS_ONLN);
@@ -113,10 +114,11 @@ int main(int argc, char *argv[]) {
             break;
         }
     }
+    
     retry:
     uint16_t *permutation = permutation_gen();
     apply_permutation(permutation);
-
+    
     while (augment_rref()) {
         free(rref_aug_mat);
         free(permutation);
@@ -135,16 +137,14 @@ int main(int argc, char *argv[]) {
         targ_weight += sol[a];
     }
     if (!best_weight || best_weight > targ_weight) {
-        printf("%hu\n", targ_weight);
         best_weight = targ_weight;
     }
-    if (weight <= targ_weight) {
+    if (weight < targ_weight) {
         free(rref_aug_mat);
         free(permutation);
         free(permutated_mat);
         goto retry;
     }
-    putchar('\n');
     for (uint8_t a = 0; a < width; a++) {
         printf("%hu", sol[a]);
     }

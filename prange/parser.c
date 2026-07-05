@@ -18,7 +18,7 @@ int o_parse(char *args[]) {
     uint32_t size = ftell(file_ptr);
     fseek(file_ptr, 0, SEEK_SET);
 
-    parity_mat = malloc(size * sizeof(uint8_t)); // unpacked because I'm bad at writing paresers (and sv allows bit-level arrays)
+    parity_mat = malloc(size * sizeof(uint8_t)); // unpacked because I'm bad at writing parsers (and sv allows bit-level arrays)
 
     uint32_t running_width = 0;
     uint32_t running_size = 0;
