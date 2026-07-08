@@ -7,7 +7,16 @@
 #include <string.h>
 #include "parser.h"
 
-bool debug = true;
+#define s_1_percent 10 // approximate percent of s_1 which we will use for the lookup
+
+#define multithread false
+#define debug true;
+#ifdef debug
+    #define print_debug(...) printf(__VA_ARGS__)
+#else
+    #define print_debug(...) ((void)0)
+#endif
+
 uint32_t weight = 0;
 uint8_t* parity_mat = 0;
 uint8_t* permutated_mat = 0;
@@ -15,12 +24,9 @@ uint8_t* rref_aug_mat = 0;
 uint8_t* syndrome = 0;
 uint32_t width = 0;
 uint32_t height = 0;
+uint32_t s_1_size = 0;
+uint32_t s_2_size = 0;
 
-void print_debug(char* printme) {
-    if (debug) {
-        puts(printme);
-    }
-}
 
 uint8_t augment_rref() {
     rref_aug_mat = malloc((width+1)*height);
@@ -39,7 +45,7 @@ uint8_t augment_rref() {
     uint8_t tmp_coord;
 
 
-    for (uint16_t a = 0; a < height; a++) {
+    for (uint16_t a = 0; a < (s_2_size); a++) {
         found = false;
         for (uint16_t b = a; b < height; b++) {
             if (rref_aug_mat[b*(width+1)+a]) {
@@ -182,7 +188,7 @@ bool attempt(uint8_t *s, uint8_t *e_1, uint8_t* e_2, uint16_t e1_size, uint16_t 
     if (best_w) {
         if (obtained_w <= best_w) {
             best_w = obtained_w;
-            printf("New local best: %hu\n", obtained_w);
+            print_debug("New local best: %hu\n", obtained_w);
         }
     } else {
         best_w = obtained_w;
@@ -233,12 +239,11 @@ bool enumerate(uint8_t* s) {
         attempts++;
         if (attempts%10000000 == 0) {
             attempts = 0;
-            printf("Took %f seconds for 10,000,000 iterations\n", ((double)(clock()-timer))/CLOCKS_PER_SEC);
+            print_debug("Took %f seconds for 10,000,000 iterations\n", ((double)(clock()-timer))/CLOCKS_PER_SEC);
             timer = clock();
         }
         found = attempt(s, e_1, e_2, e1_size, e2_size, new_e_2, s_weight);
         new_e_2 = false;
-        ok:
         if (found) {
             puts("FOUND!\n");
             return true;
@@ -249,7 +254,7 @@ bool enumerate(uint8_t* s) {
                 e_1[a] = 1;
             }
             if (gospers_wrapper(e_2, e2_size)) {
-                printf("Iteration complete with no findings\n");
+                print_debug("Iteration complete with no findings\n");
                 return false;
             }
             new_e_2 = true;
@@ -288,7 +293,6 @@ bool enumerate(uint8_t* s) {
 // which improves memory but degrades performance
 
 int main(int argc, char *argv[]) {
-    
     if (argc != 5) {
         printf("Usage: %s <matrix.txt> <syndrome.txt> <target weight> <random seed>\n", argv[0]);
         printf("Matrix identity is not infered; assumes no transposition\n");
@@ -298,15 +302,25 @@ int main(int argc, char *argv[]) {
     uint16_t seed = atoi(argv[4]);
  
     o_parse(argv);
+    
+    s_1_size = (height*s_1_percent)/100;
+    s_2_size = height-s_1_size;
+
+    print_debug("s1 size: %hu s2 size: %hu\n", s_1_size, s_2_size);
+
     long cores = sysconf(_SC_NPROCESSORS_ONLN);
     srand(seed);
-    for (int i = 0; i < cores; i++) {
-        if (!fork()) {
-            printf("Using seed %hu\n", seed+1+i);
-            srand(seed+1+i);
-            break;
+    
+    if (multithread) {
+        for (int i = 0; i < cores; i++) {
+            if (!fork()) {
+                print_debug("Using seed %hu\n", seed+1+i);
+                srand(seed+1+i);
+                break;
+            }
         }
     }
+
     retry:
     uint16_t *permutation = permutation_gen();
     apply_permutation(permutation);
@@ -319,6 +333,13 @@ int main(int argc, char *argv[]) {
         apply_permutation(permutation);
     }
     
+    for (uint16_t a = 0; a < height; a++) {
+        for (uint16_t b = 0; b < width+1; b++) {
+            print_debug("%hu", rref_aug_mat[a*(width+1)+b]);
+        }
+        putchar('\n');
+    }
+
     uint8_t* sol = malloc(width*sizeof(uint8_t));
     memset(sol, 0, width*sizeof(uint8_t));
     for (uint16_t a = 0; a < height; a++) {

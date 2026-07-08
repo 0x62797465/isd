@@ -1,0 +1,5 @@
+**/a.out
+.vscode/
+*.swp
+**/*.swp
+a.out
