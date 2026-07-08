@@ -105,37 +105,48 @@ void apply_permutation(uint16_t* permutation) {
 uint64_t gospers_hack(const uint64_t n) {
     const uint64_t c = n & -n;
     const uint64_t r = n + c;
+    if (!c) {
+        return 0;
+    }
     return ( ( ( r ^ n ) >> 2 ) / c ) | r;
 }
 
 // only works when arrays are under 64 entries // I am lazy and the bitwise math would be handled by sv anyways
-void gospers_wrapper(uint8_t* array, uint16_t array_size) {
+bool gospers_wrapper(uint8_t* array, uint16_t array_size) {
     uint64_t n = 0;
     for (uint16_t a = 0; a < array_size; a++) {
         n <<= 1;
         n |= array[array_size-1-a];
     }
     n = gospers_hack(n);
-    
+
     memset(array, 0, sizeof(uint8_t)*array_size);
 
+    if (n==0) {
+        return true;
+    }
+    
     for (uint16_t a = 0; a < array_size; a++) {
         array[a] = n&1;
         n >>= 1;
     }
+
+    return false;
 }
     
 uint8_t* global_s = 0;
 uint8_t* global_e_1 = 0;
 uint8_t* global_e_2 = 0;
+uint16_t best_w = 0;
+uint8_t *new_s = 0;
+uint8_t *cached_H_e_2 = 0;
 
-
-bool attempt(uint8_t *s, uint8_t *e_1, uint8_t* e_2, uint16_t e1_size, uint16_t e2_size, uint16_t s_weight) {
-    uint8_t *new_s = malloc(height*sizeof(uint8_t));
-    memset(new_s, 0, height);
-    for (uint16_t a = 0; a < height; a++) {
-        new_s[a] = s[a];
+bool attempt(uint8_t *s, uint8_t *e_1, uint8_t* e_2, uint16_t e1_size, uint16_t e2_size, bool new_e_2, uint16_t s_weight) {
+    if (!new_s) {
+        new_s = malloc(height*sizeof(uint8_t));
+        cached_H_e_2 = malloc(height*sizeof(uint8_t));
     }
+    memcpy(new_s, s, height);
 
     for (uint16_t a = 0; a < e1_size; a++) {
         if (e_1[a]) {
@@ -144,14 +155,21 @@ bool attempt(uint8_t *s, uint8_t *e_1, uint8_t* e_2, uint16_t e1_size, uint16_t 
             }
         }
     }
-    for (uint16_t a = 0; a < e2_size; a++) {
-        if (e_2[a]) {
-            for (uint16_t b = 0; b < height; b++) {
-                new_s[b] ^= rref_aug_mat[(width+1)*b+height+a+e1_size];
+    if (new_e_2) {
+        memset(cached_H_e_2, 0, height);
+        for (uint16_t a = 0; a < e2_size; a++) {
+            if (e_2[a]) {
+                for (uint16_t b = 0; b < height; b++) {
+                    cached_H_e_2[b] ^= rref_aug_mat[(width+1)*b+height+a+e1_size];
+                }
             }
         }
     }
     
+    for (uint16_t b = 0; b < height; b++) {
+        new_s[b] ^= cached_H_e_2[b];
+    }
+
     global_s = new_s;
     global_e_1 = e_1;
     global_e_2 = e_2;
@@ -160,10 +178,19 @@ bool attempt(uint8_t *s, uint8_t *e_1, uint8_t* e_2, uint16_t e1_size, uint16_t 
     for (uint16_t i = 0; i < height; i++) {
         obtained_w += new_s[i];
     }
+    
+    if (best_w) {
+        if (obtained_w <= best_w) {
+            best_w = obtained_w;
+            printf("New local best: %hu\n", obtained_w);
+        }
+    } else {
+        best_w = obtained_w;
+    }
+
     if (obtained_w <= s_weight) {
         return true;
     }
-    free(new_s);
     return false;
 }
 
@@ -195,27 +222,37 @@ bool enumerate(uint8_t* s) {
         e_2[a] = 1;
     }
 
+    bool new_e_2 = true;
     bool found = false;
     uint8_t inc_who = 0;
 
+    uint32_t attempts = 0;
+    clock_t timer = clock();
+
     while (true) {
-        found = attempt(s, e_1, e_2, e1_size, e2_size, s_weight);
-        if (e_2[e2_size-1]) {
-            for (uint16_t a = 0; a < needed_weight_e2; a++) {
-                if (e_2[e2_size-1-a] == 0) {
-                    goto ok;
-                }
-            }
-            return false;
+        attempts++;
+        if (attempts%10000000 == 0) {
+            attempts = 0;
+            printf("Took %f seconds for 10,000,000 iterations\n", ((double)(clock()-timer))/CLOCKS_PER_SEC);
+            timer = clock();
         }
+        found = attempt(s, e_1, e_2, e1_size, e2_size, new_e_2, s_weight);
+        new_e_2 = false;
         ok:
         if (found) {
+            puts("FOUND!\n");
             return true;
         }
-        if (inc_who) {
-            gospers_wrapper(e_1, e1_size);
-        } else {
-            gospers_wrapper(e_2, e2_size);
+        if (gospers_wrapper(e_1, e1_size)) {
+            memset(e_1, 0, sizeof(uint8_t)*e1_size);
+            for (uint16_t a = 0; a < needed_weight_e1; a++) {
+                e_1[a] = 1;
+            }
+            if (gospers_wrapper(e_2, e2_size)) {
+                printf("Iteration complete with no findings\n");
+                return false;
+            }
+            new_e_2 = true;
         }
         inc_who ^= 1;
 
@@ -223,6 +260,32 @@ bool enumerate(uint8_t* s) {
 
 }
 
+// we messed up, like pretty badly
+// our current construction is 
+// H * e^T=s^T
+// H gets permutated and transformed into | I H |
+// s' gets found via RREF during the previous step
+// we brute force e_1 and e_2 which are error
+// vectors with relatively similar weight and size
+// however, this is very very very slow
+// So we must use the technique of partial RREF
+// so we achieve 
+// (e_1+e_2)| 0 H_1 | = s_1
+// (e_1+e_2)| I H_2 | = s_2
+// This allows us to search up values for which H_1e_1+H_1e_2=s_1
+// which allows us to do less expensive checks
+// at the cost of more candidates
+
+// Changes we have to make:
+// deconstruct s'
+// make RREF tunable
+// precompute list for e_1
+// do factorial calculation for Gosper's hack so we don't have to keep extending the memory allocation.
+// sort list, make pointers towards each bucket
+// match/check with e_2
+
+// For now we're storing the full e_1, although an additonaly time/memory tradeoff is to store the partial e_1 
+// which improves memory but degrades performance
 
 int main(int argc, char *argv[]) {
     
@@ -239,11 +302,11 @@ int main(int argc, char *argv[]) {
     srand(seed);
     for (int i = 0; i < cores; i++) {
         if (!fork()) {
+            printf("Using seed %hu\n", seed+1+i);
             srand(seed+1+i);
             break;
         }
     }
-    
     retry:
     uint16_t *permutation = permutation_gen();
     apply_permutation(permutation);

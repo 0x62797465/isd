@@ -1,0 +1,1 @@
+Currently making software prototypes before committing a design to hardware. The overall goal of this project is to accelerate solving of the syndrome decoding problem (a problem important in post-quantum cryptography) using specialized hardware.
