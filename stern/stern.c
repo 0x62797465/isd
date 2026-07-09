@@ -7,7 +7,7 @@
 #include <string.h>
 #include "parser.h"
 
-#define s_1_percent 10 // approximate percent of s_1 which we will use for the lookup
+#define s_1_percent 20 // approximate percent of s_1 which we will use for the lookup
 
 #define multithread false
 #define debug
@@ -218,6 +218,7 @@ bool enumerate(uint8_t* s) {
         s_1_compact |= perm_s[height-1-a];
     }
     
+    print_debug("Need to generate %hu!/(%hu!%hu!)\n", e1_size, needed_weight_e1, e1_size-needed_weight_e1);
 
     // generate loop
     while (true) {
@@ -254,12 +255,12 @@ bool enumerate(uint8_t* s) {
         }
 
         if ((e_1_tails[tmp_s1] + height + e1_size) >= e_1_capacities[tmp_s1]) {
-            e_1_list[tmp_s1] = realloc(e_1_list[tmp_s1], e_1_capacities[tmp_s1]+4096);
+            e_1_list[tmp_s1] = realloc(e_1_list[tmp_s1], e_1_capacities[tmp_s1]*2);
             if (!e_1_list[tmp_s1]) {
                 print_debug("OOM\n");
                 exit(-1);
             }
-            e_1_capacities[tmp_s1] += 4096;
+            e_1_capacities[tmp_s1] *= 2;
         }
 
         if (gospers_wrapper(e_1, e1_size)) {
@@ -270,6 +271,9 @@ bool enumerate(uint8_t* s) {
 
     uint16_t tmp_s_weight = 0;
     // search loop
+    iterations = 0;
+    print_debug("Need to test %hu!/(%hu!%hu!)\n", e2_size, needed_weight_e2, e2_size-needed_weight_e2);
+
     while (true) {
         iterations++;
         if (iterations%1000000 == 0) {
@@ -304,47 +308,36 @@ bool enumerate(uint8_t* s) {
                 global_s[b] = perm_s[b] ^ e_1_list[tmp_s1^s_1_compact][b+e1_size+a] ^ tmp_res[b];
                 tmp_s_weight += perm_s[b] ^ e_1_list[tmp_s1^s_1_compact][b+e1_size+a] ^ tmp_res[b];
             }
-            if (tmp_s_weight <= s_weight) {
+            if (tmp_s_weight == s_weight) {
+                for (uint32_t i = 0; i < (uint64_t)(1ULL <<  s_1_size); i++) {
+                    free(e_1_list[i]);
+                }
+                free(e_1_list);
                 global_e_2 = e_2;
+                free(tmp_res);
+                free(perm_s);
+                free(e_1_tails);
+                free(e_1_capacities);
                 printf("Ok\n");
                 return 1;
             }
         }
 
         if (gospers_wrapper(e_2, e2_size)) {
+            for (uint32_t i = 0; i < (uint64_t)(1ULL <<  s_1_size); i++) {
+                free(e_1_list[i]);
+            }
+            free(e_1_list);
+            free(tmp_res);
             free(e_2);
+            free(perm_s);
+            free(e_1_tails);
+            free(e_1_capacities);
             break;
         }
     }
     return 0;
 }
-
-// we messed up, like pretty badly
-// our current construction is 
-// H * e^T=s^T
-// H gets permutated and transformed into | I H |
-// s' gets found via RREF during the previous step
-// we brute force e_1 and e_2 which are error
-// vectors with relatively similar weight and size
-// however, this is very very very slow
-// So we must use the technique of partial RREF
-// so we achieve 
-// (e_1+e_2)| 0 H_1 | = s_1
-// (e_1+e_2)| I H_2 | = s_2
-// This allows us to search up values for which H_1e_1+H_1e_2=s_1
-// which allows us to do less expensive checks
-// at the cost of more candidates
-
-// Changes we have to make:
-// deconstruct s'
-// make RREF tunable
-// precompute list for e_1
-// do factorial calculation for Gosper's hack so we don't have to keep extending the memory allocation.
-// sort list, make pointers towards each bucket
-// match/check with e_2
-
-// For now we're storing the full e_1, although an additonaly time/memory tradeoff is to store the partial e_1 
-// which improves memory but degrades performance
 
 int main(int argc, char *argv[]) {
     if (argc != 5) {
@@ -433,7 +426,8 @@ int main(int argc, char *argv[]) {
     free(permutation);
     free(sol);
     free(final_sol);
-
+    free(global_e_2);
+    free(unp_sol);
     putchar('\n');
 } 
 
