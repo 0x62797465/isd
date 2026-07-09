@@ -10,7 +10,7 @@
 #define s_1_percent 10 // approximate percent of s_1 which we will use for the lookup
 
 #define multithread false
-#define debug true;
+#define debug
 #ifdef debug
     #define print_debug(...) printf(__VA_ARGS__)
 #else
@@ -144,67 +144,12 @@ uint8_t* global_s = 0;
 uint8_t* global_e_1 = 0;
 uint8_t* global_e_2 = 0;
 uint16_t best_w = 0;
-uint8_t *new_s = 0;
-uint8_t *cached_H_e_2 = 0;
-
-bool attempt(uint8_t *s, uint8_t *e_1, uint8_t* e_2, uint16_t e1_size, uint16_t e2_size, bool new_e_2, uint16_t s_weight) {
-    if (!new_s) {
-        new_s = malloc(height*sizeof(uint8_t));
-        cached_H_e_2 = malloc(height*sizeof(uint8_t));
-    }
-    memcpy(new_s, s, height);
-
-    for (uint16_t a = 0; a < e1_size; a++) {
-        if (e_1[a]) {
-            for (uint16_t b = 0; b < height; b++) {
-                new_s[b] ^= rref_aug_mat[(width+1)*b+height+a];
-            }
-        }
-    }
-    if (new_e_2) {
-        memset(cached_H_e_2, 0, height);
-        for (uint16_t a = 0; a < e2_size; a++) {
-            if (e_2[a]) {
-                for (uint16_t b = 0; b < height; b++) {
-                    cached_H_e_2[b] ^= rref_aug_mat[(width+1)*b+height+a+e1_size];
-                }
-            }
-        }
-    }
-    
-    for (uint16_t b = 0; b < height; b++) {
-        new_s[b] ^= cached_H_e_2[b];
-    }
-
-    global_s = new_s;
-    global_e_1 = e_1;
-    global_e_2 = e_2;
-
-    uint16_t obtained_w = 0;
-    for (uint16_t i = 0; i < height; i++) {
-        obtained_w += new_s[i];
-    }
-    
-    if (best_w) {
-        if (obtained_w <= best_w) {
-            best_w = obtained_w;
-            print_debug("New local best: %hu\n", obtained_w);
-        }
-    } else {
-        best_w = obtained_w;
-    }
-
-    if (obtained_w <= s_weight) {
-        return true;
-    }
-    return false;
-}
 
 uint16_t global_e_1_size = 0;
 uint16_t global_e_2_size = 0;
 
 bool enumerate(uint8_t* s) {
-    uint16_t enum_width = width-height;
+    uint16_t enum_width = width-s_2_size;
     
     uint16_t needed_weight_e1 = (enum_width*weight)/width/2; // enum_width/width gives us the percent of weight that lives in enum_width
     uint16_t needed_weight_e2 = ((enum_width*weight)/width)%2 ? (enum_width*weight)/width/2+1 : (enum_width*weight)/width/2;
@@ -212,11 +157,12 @@ bool enumerate(uint8_t* s) {
     
     uint16_t e1_size = (enum_width/2);
     uint16_t e2_size = enum_width%2 ? ((enum_width/2)+1) : (enum_width/2);
-    global_e_1_size = e1_size;
+    global_e_1_size = e1_size; 
     global_e_2_size = e2_size;
-
     uint8_t *e_1 = malloc(sizeof(uint8_t)*e1_size);
+    global_e_1 = malloc(sizeof(uint8_t)*e1_size);
     uint8_t *e_2 = malloc(sizeof(uint8_t)*e2_size);
+    global_s = malloc(sizeof(uint8_t)*height);
     
     memset(e_1, 0, sizeof(uint8_t)*e1_size);
     memset(e_2, 0, sizeof(uint8_t)*e2_size);
@@ -228,41 +174,149 @@ bool enumerate(uint8_t* s) {
         e_2[a] = 1;
     }
 
-    bool new_e_2 = true;
-    bool found = false;
-    uint8_t inc_who = 0;
 
-    uint32_t attempts = 0;
+    uint32_t iterations = 0;
     clock_t timer = clock();
 
-    while (true) {
-        attempts++;
-        if (attempts%10000000 == 0) {
-            attempts = 0;
-            print_debug("Took %f seconds for 10,000,000 iterations\n", ((double)(clock()-timer))/CLOCKS_PER_SEC);
-            timer = clock();
-        }
-        found = attempt(s, e_1, e_2, e1_size, e2_size, new_e_2, s_weight);
-        new_e_2 = false;
-        if (found) {
-            puts("FOUND!\n");
-            return true;
-        }
-        if (gospers_wrapper(e_1, e1_size)) {
-            memset(e_1, 0, sizeof(uint8_t)*e1_size);
-            for (uint16_t a = 0; a < needed_weight_e1; a++) {
-                e_1[a] = 1;
-            }
-            if (gospers_wrapper(e_2, e2_size)) {
-                print_debug("Iteration complete with no findings\n");
-                return false;
-            }
-            new_e_2 = true;
-        }
-        inc_who ^= 1;
 
+    // memory complexity is (k!/(p!(k-p)!)), where k is size of e_1 and p is weight of e_1. This is huge and quickly
+    // becomes impractical, which is why our future version will have a higher depth split 
+
+    // this data structure holds buckets for each possible s_1 result for easy lookup, it decreases the number of exact
+    // comparisons we need to do. However, in hardware it might be more memory efficient to sort instead of bucket. 
+    // this will be somewhat costly, so we can possibly sort while generating? unsure
+    uint8_t **e_1_list = malloc((uint64_t)(1ULL <<  s_1_size) * sizeof(int*));
+    uint32_t *e_1_tails = malloc((uint64_t)(1ULL <<  s_1_size) * sizeof(uint32_t));
+    uint32_t *e_1_capacities = malloc((uint64_t)(1ULL <<  s_1_size) * sizeof(uint32_t));
+    
+    for (uint32_t i = 0; i < (uint64_t)(1ULL <<  s_1_size); i++) {
+        e_1_list[i] = malloc(4096 * sizeof(uint8_t));
+        if (!e_1_list[i]) {
+            print_debug("Malloc failed\n");
+            exit(-1);
+        }
+        e_1_tails[i] = 0;
+        e_1_capacities[i] = 4096;
     }
 
+    uint8_t *tmp_res = malloc(height*sizeof(uint8_t));
+    
+    uint8_t *perm_s = malloc(height*sizeof(uint8_t));
+    uint64_t tmp_s1 = 0;
+
+    print_debug("s_1_size: %hu s_1_all: %lu\n", s_1_size, (uint64_t)(1ULL <<  s_1_size));
+
+    uint64_t s_1_compact = 0;
+    memset(perm_s, 0, height*sizeof(uint8_t));
+
+    for (uint16_t b = 0; b < height; b++) {
+        perm_s[b] ^= rref_aug_mat[(width+1)*b+width];
+    }
+
+    for (uint16_t a = 0; a < s_1_size; a++) {
+        s_1_compact <<= 1ULL;
+        s_1_compact |= perm_s[height-1-a];
+    }
+    
+
+    // generate loop
+    while (true) {
+        iterations++;
+        if (iterations%1000000 == 0) {
+            iterations = 0;
+            print_debug("Took %f seconds for 1,000,000 iterations\n", ((double)(clock()-timer))/CLOCKS_PER_SEC);
+            timer = clock();
+        }
+
+        memset(tmp_res, 0, height*sizeof(uint8_t));
+        tmp_s1 = 0;
+
+        for (uint16_t a = 0; a < e1_size; a++) {
+            if (e_1[a]) {
+                for (uint16_t b = 0; b < height; b++) {
+                    tmp_res[b] ^= rref_aug_mat[(width+1)*b+s_2_size+a];
+                }
+            }
+        }
+
+        for (uint16_t a = 0; a < s_1_size; a++) {
+            tmp_s1 <<= 1ULL;
+            tmp_s1 |= tmp_res[height-1-a];
+        }
+        //print_debug("%u\n", e_1_tails[tmp_s1]);
+        
+        for (uint16_t i = 0; i < e1_size; i++) {
+            e_1_list[tmp_s1][e_1_tails[tmp_s1]++] = e_1[i]; 
+        }
+        
+        for (uint16_t i = 0; i < height; i++) {
+            e_1_list[tmp_s1][e_1_tails[tmp_s1]++] = tmp_res[i]; 
+        }
+
+        if ((e_1_tails[tmp_s1] + height + e1_size) >= e_1_capacities[tmp_s1]) {
+            e_1_list[tmp_s1] = realloc(e_1_list[tmp_s1], e_1_capacities[tmp_s1]+4096);
+            if (!e_1_list[tmp_s1]) {
+                print_debug("OOM\n");
+                exit(-1);
+            }
+            e_1_capacities[tmp_s1] += 4096;
+        }
+
+        if (gospers_wrapper(e_1, e1_size)) {
+            free(e_1);
+            break;
+        }
+    }
+
+    uint16_t tmp_s_weight = 0;
+    // search loop
+    while (true) {
+        iterations++;
+        if (iterations%1000000 == 0) {
+            iterations = 0;
+            print_debug("Took %f seconds for 1,000,000 iterations\n", ((double)(clock()-timer))/CLOCKS_PER_SEC);
+            timer = clock();
+        }
+
+        memset(tmp_res, 0, height*sizeof(uint8_t));
+        tmp_s1 = 0;
+
+        for (uint16_t a = 0; a < e2_size; a++) {
+            if (e_2[a]) {
+                for (uint16_t b = 0; b < height; b++) {
+                    tmp_res[b] ^= rref_aug_mat[(width+1)*b+s_2_size+e1_size+a];
+                }
+            }
+        }
+
+        for (uint16_t a = 0; a < s_1_size; a++) {
+            tmp_s1 <<= 1ULL;
+            tmp_s1 |= tmp_res[height-1-a];
+        }
+        //print_debug("%u\n", e_1_tails[tmp_s1]);
+        
+        for (uint64_t a = 0; a < e_1_tails[tmp_s1^s_1_compact]; a+=(height+e1_size)) { // does this go out of bounds? haha sometimes!
+            tmp_s_weight = 0;
+            for (uint16_t b = 0; b < height; b++) {
+                if (b < e1_size) {
+                    global_e_1[b] = e_1_list[tmp_s1^s_1_compact][b+a];
+                }
+                global_s[b] = perm_s[b] ^ e_1_list[tmp_s1^s_1_compact][b+e1_size+a] ^ tmp_res[b];
+                tmp_s_weight += perm_s[b] ^ e_1_list[tmp_s1^s_1_compact][b+e1_size+a] ^ tmp_res[b];
+            }
+            if (tmp_s_weight <= s_weight) {
+                global_e_2 = e_2;
+                printf("Ok\n");
+                return 1;
+            }
+        }
+
+        if (gospers_wrapper(e_2, e2_size)) {
+            free(e_2);
+            break;
+        }
+    }
+    return 0;
 }
 
 // we messed up, like pretty badly
@@ -356,14 +410,14 @@ int main(int argc, char *argv[]) {
     uint8_t* final_sol = malloc(width*sizeof(uint8_t));
     memset(final_sol, 0, width*sizeof(uint8_t));
     
-    for (uint16_t a = 0; a < height; a++) {
+    for (uint16_t a = 0; a < s_2_size; a++) {
         final_sol[a] = global_s[a];
     }
     for (uint16_t a = 0; a < global_e_1_size; a++) {
-        final_sol[height+a] = global_e_1[a];
+        final_sol[s_2_size+a] = global_e_1[a];
     }
     for (uint16_t a = 0; a < global_e_2_size; a++) {
-        final_sol[height+global_e_1_size+a] = global_e_2[a];
+        final_sol[s_2_size+global_e_1_size+a] = global_e_2[a];
     }
     
     uint8_t* unp_sol = malloc(width*sizeof(uint8_t));
