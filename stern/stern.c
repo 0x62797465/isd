@@ -9,8 +9,8 @@
 
 #define s_1_percent 20 // approximate percent of s_1 which we will use for the lookup
 
-#define multithread false
-#define debug
+#define multithread true
+//#define debug
 #ifdef debug
     #define print_debug(...) printf(__VA_ARGS__)
 #else
@@ -190,6 +190,12 @@ bool enumerate(uint8_t* s) {
     uint32_t *e_1_capacities = malloc((uint64_t)(1ULL <<  s_1_size) * sizeof(uint32_t));
     
     for (uint32_t i = 0; i < (uint64_t)(1ULL <<  s_1_size); i++) {
+        long pages = sysconf(_SC_AVPHYS_PAGES);
+        long page_size = sysconf(_SC_PAGESIZE);
+        if (pages*page_size < 1000000000ULL) { // less than a gigabyte left
+            print_debug("Not enough memory for full allocation\n");
+            exit(-1);
+        }
         e_1_list[i] = malloc(4096 * sizeof(uint8_t));
         if (!e_1_list[i]) {
             print_debug("Malloc failed\n");
@@ -256,6 +262,13 @@ bool enumerate(uint8_t* s) {
 
         if ((e_1_tails[tmp_s1] + height + e1_size) >= e_1_capacities[tmp_s1]) {
             e_1_list[tmp_s1] = realloc(e_1_list[tmp_s1], e_1_capacities[tmp_s1]*2);
+            long pages = sysconf(_SC_AVPHYS_PAGES);
+            long page_size = sysconf(_SC_PAGESIZE);
+            if (pages*page_size < 1000000000ULL) { // less than a gigabyte left
+                print_debug("Terminated generation early due to low memory, continuing with search...\n");
+                free(e_1);
+                break;
+            }
             if (!e_1_list[tmp_s1]) {
                 print_debug("OOM\n");
                 exit(-1);
@@ -360,6 +373,7 @@ int main(int argc, char *argv[]) {
     
     if (multithread) {
         for (int i = 0; i < cores; i++) {
+            sleep(5);
             if (!fork()) {
                 print_debug("Using seed %hu\n", seed+1+i);
                 srand(seed+1+i);
@@ -384,7 +398,7 @@ int main(int argc, char *argv[]) {
         for (uint16_t b = 0; b < width+1; b++) {
             print_debug("%hu", rref_aug_mat[a*(width+1)+b]);
         }
-        putchar('\n');
+        print_debug('\n');
     }
 
     uint8_t* sol = malloc(width*sizeof(uint8_t));

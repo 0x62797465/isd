@@ -1,5 +1,7 @@
-main: prange.c parser.c parser.h
-	gcc prange.c parser.c -Ofast -march=native -flto
+all: perm_tb 
 
-example: main
-	./a.out matrix.txt syndrome.txt 27 0
+perm_tb: src/perm.sv tb/perm_tb.sv
+	vlib work
+	vmap work work
+	vlog -sv +incdir+src src/perm.sv tb/perm_tb.sv
+	SALT_LICENSE_SERVER=~/Tools/LR-156275_License.dat vsim -suppress 12110 -quiet -c work.perm_tb -do "run -all; quit"

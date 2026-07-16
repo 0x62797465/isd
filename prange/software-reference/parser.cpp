@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <boost/dynamic_bitset.hpp>
 
 void o_parse(char *args[]) {
     FILE* file_ptr = 0;
@@ -18,7 +19,7 @@ void o_parse(char *args[]) {
     uint32_t size = ftell(file_ptr);
     fseek(file_ptr, 0, SEEK_SET);
 
-    parity_mat = malloc(size * sizeof(uint8_t)); // unpacked because I'm bad at writing parsers (and sv allows bit-level arrays)
+    parity_mat = (uint8_t*)malloc(size);
 
     uint32_t running_width = 0;
     uint32_t running_size = 0;
@@ -72,7 +73,7 @@ void o_parse(char *args[]) {
     size = ftell(file_ptr);
     fseek(file_ptr, 0, SEEK_SET);
 
-    syndrome = malloc(size*sizeof(uint8_t));
+    syndrome.resize(size);
 
     uint8_t prev_newline = 1;
 
