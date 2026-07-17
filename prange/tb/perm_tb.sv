@@ -4,11 +4,9 @@ module perm_tb;
     reg clk = 0;
     reg reset = 0;
     reg [31:0] seed_base = '1;
-    reg [(WIDTH/2)-1:0] [WIDTH_LOG2-1:0] perm_mat = '0;
     always #10 clk = ~clk;
 
-    perm dut (.clk(clk), .reset(reset), .seed_base(seed_base), 
-        .perm_mat(perm_mat));
+    perm dut (.clk(clk), .reset(reset), .seed_base(seed_base));
 
     // basic randomness assertions
     assert property (@(posedge clk)
@@ -41,7 +39,7 @@ module perm_tb;
             for (int a = 0; a < ((WIDTH/2)); a++) begin
                 for (int b = 0; b < ((WIDTH/2)); b++) begin
                     if (a != b)
-                        perm_invalid |= perm_mat[a] == perm_mat[b];
+                        perm_invalid |= dut.internal_mat[a] == dut.internal_mat[b];
                 end
             end
             if (perm_invalid) begin
