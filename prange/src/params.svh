@@ -1,3 +1,6 @@
+`ifndef PARAMS_GAURD
+`define PARAMS_GAURD
+`include "matrix.svh"
 // problem information
 localparam int WIDTH = 200;
 localparam int HEIGHT = WIDTH/2;
@@ -11,3 +14,4 @@ localparam int BASE_SEED = 396513798; // note, this must be non-zero
 localparam int OUTPUT_CYCLES_PER_COL = 1; // height must be divisible by this
 localparam int OUTPUT_WIDTH = HEIGHT/OUTPUT_CYCLES_PER_COL;
 localparam int GAUS_UNITS = 4;
+`endif
