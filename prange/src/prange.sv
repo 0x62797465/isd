@@ -11,15 +11,19 @@ module prange (
 `define CLK CLOCK_50_B5B // will change in future
 
 // unpacked array of 2d packed arrays
-reg [(WIDTH/2)-1:0] [WIDTH_LOG2-1:0] perm_mat [0:PERMUTATE_AMOUNT-1];
+reg [(WIDTH/2)-1:0] [WIDTH_LOG2-1:0] perm_mat;
+reg [GAUS_UNITS:0] gauss_ready;
+
+perm perm (.clk(`CLK), .reset(CPU_RESET_n), .seed_base(BASE_SEED),
+    .ready(gauss_ready), .perm_mat(perm_mat));
 
 genvar i;
 generate
-    for (i = 0; i < PERMUTATE_AMOUNT; i++) begin
-        perm perm (.clk(`CLK), .reset(CPU_RESET_n), .seed_base(BASE_SEED+i),
-            .perm_mat(perm_mat[i]));
+    for (i = 0; i < GAUS_UNITS; i++) begin
+        
     end
 endgenerate
+
 
 
 endmodule

@@ -27,7 +27,7 @@ end
 
 // copying logic
 reg [$clog2(HEIGHT)-1:0] copy_ptr;
-reg [$clog2(WIDTH/2)-1:0] col_ptr;
+reg [$clog2(HEIGHT)-1:0] col_ptr;
 reg [$clog2(WIDTH)-1:0] per_col_ptr;
 
 always_ff @(posedge clk or negedge reset) begin
@@ -55,7 +55,7 @@ always_ff @(posedge clk or negedge reset) begin
             end else
                 copy_ptr <= copy_ptr+OUTPUT_WIDTH;
             if (col_ptr == HEIGHT)
-                broadcast_valid = 1'b0;
+                broadcast_valid <= 1'b0;
         end else if (|ready) begin 
             for (int i = 0; i < GAUS_UNITS; i++) begin
                 if (ready[i]) begin // the amount of units should be small enough for a priority encoder to not break timing
