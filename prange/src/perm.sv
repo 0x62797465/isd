@@ -4,7 +4,7 @@ module perm (
     input [31:0] seed_base,
     input clk,
     input reset,
-    input [GAUS_UNITS:0] ready,
+    input [GAUS_UNITS-1:0] ready,
 
     output reg [OUTPUT_WIDTH-1:0] partial_mat,
     output reg [$clog2(GAUS_UNITS)-1:0] broadcast_to,

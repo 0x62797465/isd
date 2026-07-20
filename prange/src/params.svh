@@ -13,7 +13,7 @@ localparam int PROB_SIZE = WIDTH*HEIGHT;
 
 // architecture config
 localparam int PERMUTATE_AMOUNT = 2;
-localparam int BASE_SEED = 396513798; // note, this must be non-zero
+localparam int BASE_SEED = 396513791; // note, this must be non-zero
 localparam int OUTPUT_WIDTH = 2; // bits transfered from permutate to gauss units in cycle, HEIGHT%OUTPUT_WITH must be zero
 localparam int GAUS_UNITS = 4;
 

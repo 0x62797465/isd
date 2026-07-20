@@ -17,6 +17,6 @@ for a in range(0, len_lines):
 file.close()
 
 with open("src/matrix.svh", "w") as file_write:
-    file_write.write("`define MATRIX " + str(len(transposed)) + "'b" + transposed)
+    file_write.write("`define MATRIX " + str(len(transposed)) + "'b" + transposed[::-1])
 
 

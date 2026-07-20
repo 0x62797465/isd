@@ -75,6 +75,10 @@ module gauss_tb;
     endtask
 
     task check_weight();
+        assert ($countones(dut.internal_syndrome) == 27 && correct ||
+                ($countones(dut.internal_syndrome) != 27 && !correct))
+            else $fatal(2, "Correctness assertion failed\n");
+
         assert ($countones(dut.internal_syndrome) == dut.bitcount)
             else $fatal(2, "Internal count %d does not match real count %d\n",
                 dut.bitcount, $countones(dut.internal_syndrome));

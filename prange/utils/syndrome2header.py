@@ -17,6 +17,6 @@ for b in range(0, lines):
 file.close()
 
 with open("src/syndrome.svh", "w") as file_write:
-    file_write.write("`define SYNDROME " + str(len(transposed)) + "'b" + transposed)
+    file_write.write("`define SYNDROME " + str(len(transposed)) + "'b" + transposed[::-1])
 
 

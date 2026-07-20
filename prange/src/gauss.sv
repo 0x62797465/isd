@@ -135,9 +135,10 @@ always_ff @(posedge clk or negedge reset) begin
                     end
                     count_syndrome_ptr <= count_syndrome_ptr + BITS_COUNTED_PER_CYCLE;
                     if (count_syndrome_ptr == HEIGHT) begin
-                        if (bitcount == TARGET_WEIGHT) begin
+                        if (bitcount+temp_bitcount == TARGET_WEIGHT) begin
                             correct <= 1'b1;
                             state <= state + 1;
+                            $write("%b\n", internal_syndrome);
                         end else begin
                             state <= '0;
                             done <= '1;
