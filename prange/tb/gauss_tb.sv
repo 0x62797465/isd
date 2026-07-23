@@ -8,15 +8,15 @@ module gauss_tb;
 
     reg [HEIGHT-1:0] [HEIGHT-1:0] mat_tb;
     reg [OUTPUT_WIDTH-1:0] partial_mat;
-    reg [$clog2(GAUS_UNITS)-1:0] broadcast_to;
-    reg broadcast_valid;
+    reg [$clog2(GAUS_UNITS)+1:0] broadcast_to;
+    reg broadcast_valid_old;
 
     reg done;
     reg correct;
 
     gauss dut (.clk(clk), .reset(reset), .partial_mat(partial_mat),
-        .broadcast_to(broadcast_to), .broadcast_target(2'd2),
-        .broadcast_valid(broadcast_valid), .done(done), .correct(correct));
+        .broadcast_to(broadcast_to), .broadcast_target(2'b00),
+        .broadcast_valid_old(broadcast_valid_old), .done(done), .correct(correct));
         
 
     assert property (
@@ -45,7 +45,7 @@ module gauss_tb;
 
     task transfer_matrix();
         @(negedge clk);
-        broadcast_to <= 2;
+        broadcast_to <= 0;
         broadcast_valid <= 1'b1;
         copy_ptr <= 0;
         col_ptr <= 0;

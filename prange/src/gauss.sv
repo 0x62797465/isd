@@ -1,11 +1,13 @@
+// TODO: Rewrite completely, fix, it's broken
+
 `include "params.svh"
 
 module gauss (
     input clk,
     input reset,
     input [OUTPUT_WIDTH-1:0] partial_mat,
-    input [$clog2(GAUS_UNITS)-1:0] broadcast_to,
-    input [$clog2(GAUS_UNITS)-1:0] broadcast_target,
+    input [$clog2(GAUS_UNITS)+1:0] broadcast_to,
+    input [$clog2(GAUS_UNITS)+1:0] broadcast_target,
     input broadcast_valid,
 
     output reg done,
@@ -22,7 +24,8 @@ localparam int stall = 5;
 
 reg [$clog2(HEIGHT)-1:0] col_ptr;
 reg [$clog2(HEIGHT)-1:0] copy_ptr;
-reg [HEIGHT-1:0] [HEIGHT-1:0] internal_mat;
+
+(* ramstyle = "M10K" *) reg [15:0] [(HEIGHT*HEIGHT)/16:0] internal_mat;
 reg [HEIGHT-1:0] internal_syndrome;
 reg [2:0] state; // receive, select, eliminate, popcount 
 
@@ -38,6 +41,19 @@ reg [$clog2(HEIGHT)-1:0] bitcount;
 reg [$clog2(BITS_COUNTED_PER_CYCLE)-1:0] temp_bitcount;
 reg [BITS_COUNTED_PER_CYCLE-1:0] count_vect;
 
+reg we;
+reg [($clog2((HEIGHT*HEIGHT)/16)-1):0] write_ptr;
+reg [($clog2((HEIGHT*HEIGHT)/16)-1):0] read_ptr;
+reg [15:0] write_buffer;
+reg [15:0] read_buffer;
+
+always_ff @(posedge clk) begin
+    if (we) begin
+        internal_mat[write_ptr] <= write_buffer;
+    end
+    read_buffer <= internal_mat[read_ptr];
+end 
+
 always_comb begin
     temp_bitcount = 0;
     for (int i = 0; i < BITS_COUNTED_PER_CYCLE; i++) begin
@@ -47,6 +63,7 @@ end
 
 always_ff @(posedge clk or negedge reset) begin
     if (!reset) begin
+        we <= 0;
         copy_ptr <= 0;
         col_ptr <= 0;
         correct <= 0;
@@ -55,6 +72,10 @@ always_ff @(posedge clk or negedge reset) begin
     end else begin
         case (state)
             uninitialized : begin
+                    read_ptr <= '0;
+                    write_ptr <= '0;
+                    we <= '0;
+
                     if (broadcast_valid && broadcast_to == broadcast_target) begin
                         done <= '0;
                         state <= state + 1;
@@ -87,18 +108,21 @@ always_ff @(posedge clk or negedge reset) begin
             select : begin
                     search_ptr <= search_ptr + SEARCH_PER_CYCLE;
                     for (int i = 0; i < SEARCH_PER_CYCLE; i++) begin
-                        if (internal_mat[i+search_ptr][col_search_ptr]) begin 
+                        if (internal_mat[rename_table[i+search_ptr]][col_search_ptr] && free_list[rename_table[i+search_ptr]]) begin 
                             // originally was going to be a rename structure, but would require a tree-based approach and increase 
-                            // logic usage too much
-                            internal_mat[col_search_ptr] <= internal_mat[i+search_ptr];
-                            internal_mat[i+search_ptr] <= internal_mat[col_search_ptr];
+                            // logic usage too much. Edit: two rename tables can be used for an easy inverse mapping so linear
+                            // search can still work
+                            free_list[rename_table[i+search_ptr]] <= 1'b0;
+                            rename_table[col_search_ptr] <= rename_table[i+search_ptr];
+                            rename_table[i+search_ptr] <= rename_table[col_search_ptr];
+
                             // improve naming convention!!!!
                             internal_syndrome[col_search_ptr] <= internal_syndrome[i+search_ptr];
                             internal_syndrome[i+search_ptr] <= internal_syndrome[col_search_ptr];
                             state <= state + 1;
                             elim_row_ptr <= '0;
                             tmp_s_coord <= internal_syndrome[i+search_ptr];
-                            tmp_vect <= internal_mat[i+search_ptr];
+                            tmp_vect <= internal_mat[rename_table[i+search_ptr]];
                             break;
                         end else if (search_ptr+i == HEIGHT-1) begin
                             state <= '0;
@@ -108,9 +132,9 @@ always_ff @(posedge clk or negedge reset) begin
                 end
             eliminate : begin // ~~note to self: see if REF is faster/better circut complexity (answer is likely yes)~~ do NOT do this
                     for (int i = 0; i < ELIMINATE_PER_CYCLE; i++) begin
-                        if (internal_mat[elim_row_ptr+i][col_search_ptr] && // if the bit needs to be flipped
+                        if (internal_mat[rename_table[elim_row_ptr+i]][col_search_ptr] && // if the bit needs to be flipped
                             (col_search_ptr != elim_row_ptr+i)) begin // and it's not the row we're using for elimination
-                                internal_mat[elim_row_ptr+i] <= internal_mat[elim_row_ptr+i] ^ tmp_vect;
+                                internal_mat[rename_table[elim_row_ptr+i]] <= internal_mat[rename_table[elim_row_ptr+i]] ^ tmp_vect;
                                 internal_syndrome[elim_row_ptr+i] <= internal_syndrome[elim_row_ptr+i] ^ tmp_s_coord;
                         end
                     end
@@ -118,7 +142,7 @@ always_ff @(posedge clk or negedge reset) begin
                     if (elim_row_ptr+ELIMINATE_PER_CYCLE-HEIGHT == 0) begin
                         elim_row_ptr <= '0;
                         col_search_ptr <= col_search_ptr + 1;
-                        search_ptr <= col_search_ptr + 1;
+                        search_ptr <= '0;
                         state <= state - 1;
                         if (col_search_ptr == HEIGHT-1) begin
                             bitcount <= '0;

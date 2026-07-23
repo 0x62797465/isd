@@ -4,19 +4,19 @@ if (len(sys.argv) == 1):
     exit()
 file = open(sys.argv[1], "r")
 data = list(file)
-lines = len(data)
-len_lines = len(data[0])
-transposed = ""
-for a in range(0, len_lines):
-    for b in range(0, lines):
-        try:
-            if (data[b][a] == '0' or data[b][a] == '1'):
-                transposed += data[b][a]
-        except:
-            ()
 file.close()
+height = len(data)
+width = len(data[0])
 
-with open("src/matrix.svh", "w") as file_write:
-    file_write.write("`define MATRIX " + str(len(transposed)) + "'b" + transposed[::-1])
+final_str = ""
+for a in range(0, width):
+    for b in range(0, height):
+        if (data[b][a] == '0' or data[b][a] == '1'):
+            final_str += data[b][a]
+
+
+
+with open("src/matrix.bin", "w") as file_write:
+    file_write.write(final_str[::-1])
 
 

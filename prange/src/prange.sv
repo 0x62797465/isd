@@ -11,25 +11,25 @@ module prange (
 
 `define CLK CLOCK_50_B5B // will change in future
 
-reg [OUTPUT_WIDTH-1:0] partial_mat;
+reg mat_bit;
 reg [GAUS_UNITS-1:0] gauss_ready;
 reg [GAUS_UNITS-1:0] gauss_correct;
 reg [$clog2(GAUS_UNITS)-1:0] broadcast_to;
 reg broadcast_valid;
 
 perm perm (.clk(`CLK), .reset(CPU_RESET_n), .seed_base(BASE_SEED),
-    .ready(gauss_ready), .partial_mat(partial_mat), .broadcast_to(broadcast_to),
-    .broadcast_valid(broadcast_valid));
-
+    .ready(gauss_ready), .mat_bit(mat_bit), .broadcast_to(broadcast_to),
+    .broadcast_valid_old(broadcast_valid));
+/*
 genvar i;
 generate
-    for (i = 0; i < GAUS_UNITS; i++) begin
+    for (i = 0; i < GAUS_UNITS; i++) begin : gen_gauss
         gauss gauss (.clk(`CLK), .reset(CPU_RESET_n), .partial_mat(partial_mat),
             .broadcast_to(broadcast_to), .broadcast_target(($clog2(GAUS_UNITS))'(i)), .broadcast_valid(broadcast_valid),
             .done(gauss_ready[i]), .correct(gauss_correct[i]));
     end
 endgenerate
-
+*/
 assign LEDG = |gauss_correct;
 
 endmodule

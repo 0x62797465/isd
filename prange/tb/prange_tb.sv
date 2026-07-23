@@ -14,7 +14,7 @@ module prange_tb;
         @(posedge clk);
         @(negedge clk);
         reset = 1;
-        for (int i = 0; i < 1000100000; i++) begin
+        while (!(|ALREADY_VALID)) begin
             @(posedge clk);
             if (LEDG) begin
                 for (int i = 0; i < GAUS_UNITS; i++) begin
