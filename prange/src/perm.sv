@@ -11,16 +11,16 @@ module perm (
     output reg broadcast_valid_old
 );
 
-localparam int words = (WIDTH-1)/32;
+localparam int words = (WIDTH+1)/32;
 localparam logic [WIDTH*HEIGHT-1:0] tmp_matrix = `MATRIX;
+localparam logic [HEIGHT-1:0] tmp_syndrome = `SYNDROME;
 (* ramstyle = "M10K" *) reg [31:0] original_matrix [(HEIGHT-1):0] [words:0]; // = `MATRIX; TODO: Fix matrix definition // more mem usage less circut complexity  
 initial begin
     for (int a = 0; a < HEIGHT; a++) begin
-        for (int b = 0; b < words+1; b++) begin
-            for (int c = 0; c < 32; c++) begin
-                original_matrix[a][b][c] = tmp_matrix[(a*WIDTH+b*32+c)%(WIDTH*HEIGHT-1)];
-            end
+        for (int b = 0; b < WIDTH; b++) begin
+            original_matrix[a][b/32][b%32] = tmp_matrix[(a*WIDTH+b)];
         end
+        original_matrix[a][(WIDTH)/32][(WIDTH)%32] = tmp_syndrome[a];
     end
 end
 reg [31:0] new_seed;
@@ -36,17 +36,14 @@ end
 
 // copying logic
 
-reg [$clog2(WIDTH)-1:0] old_copy_ptr;
-reg [$clog2(WIDTH)-1:0] copy_ptr; // technically can be unified, probably will be under synthesis, this is just for clarity
-reg [$clog2(WIDTH/32):0] aligned_copy_ptr;
+reg [$clog2(WIDTH+1)-1:0] old_copy_ptr;
+reg [$clog2(WIDTH+1)-1:0] copy_ptr; // technically can be unified, probably will be under synthesis, this is just for clarity
+reg [$clog2((WIDTH+1)/32):0] aligned_copy_ptr;
 assign aligned_copy_ptr = copy_ptr/32; // word alignmnet
-
-reg [$clog2(HEIGHT):0] col_ptr;
 
 reg [$clog2(HEIGHT):0] row_ptr;
 reg [$clog2(HEIGHT):0] old_row_ptr;
 reg [$clog2(HEIGHT):0] older_row_ptr;
-
 
 
 reg [31:0] read_buff;
@@ -55,11 +52,11 @@ always_ff @(posedge clk) begin
 end
 
  // this assumes that $clog2(HEIGHT) < 2^16; additionally it wastes memory to save compute
-(* ramstyle = "M10K" *) reg [15:0] perm_snapshots [GAUS_UNITS:0] [WIDTH-1:0];
+(* ramstyle = "M10K" *) reg [15:0] perm_snapshots [GAUS_UNITS:0] [WIDTH:0];
 reg [15:0] perm_read_buff;
 reg [15:0] perm_write_buff;
-reg [15:0] perm_write_ptr;
-reg [15:0] perm_read_ptr;
+reg [$clog2(WIDTH+1):0] perm_write_ptr;
+reg [$clog2(WIDTH+1):0] perm_read_ptr;
 reg [$clog2(GAUS_UNITS):0] read_unit_ptr;
 reg [$clog2(GAUS_UNITS):0] write_unit_ptr;
  
@@ -102,7 +99,7 @@ always_ff @(posedge clk or negedge reset) begin
         initialized <= '0;
         broadcast_to <= 0;
         for (int i = 0; i < GAUS_UNITS; i++) begin
-            rename_table[i] <= i;
+            rename_table[i] <= i; // likely too small to need to be initialized
         end
         free_ptr <= GAUS_UNITS;
         cur_seed <= seed_base;
@@ -116,9 +113,10 @@ always_ff @(posedge clk or negedge reset) begin
         perm_read_ptr <= '0;
     end else begin
         if (!initialized) begin
+            // sets all permutation snapshots (and the free one) to 1...N pointers
             perm_write_ptr <= perm_write_ptr + 1;
             perm_write_buff <= perm_write_ptr + 1;
-            if (perm_write_ptr == WIDTH-1) begin
+            if (perm_write_ptr == WIDTH) begin
                 if (write_unit_ptr == GAUS_UNITS+1) begin
                     initialized <= '1;
                     perm_we <= '0;
@@ -130,23 +128,27 @@ always_ff @(posedge clk or negedge reset) begin
             end
         end else begin
             if (broadcast_valid || broadcast_valid_old) begin
+                // cycle delayed row pointer
                 old_row_ptr <= older_row_ptr;
                 row_ptr <= old_row_ptr;
+                
                 // this echos bit by bit of the row 
                 mat_bit <= read_buff[old_copy_ptr%32];
-                perm_read_ptr <= col_ptr;
-                col_ptr <= col_ptr + 1; 
+
+                // set permutation reading
+                perm_read_ptr <= perm_read_ptr + 1;
+                
+                // set column pointer based off previous read permutation pointer
                 copy_ptr <= perm_read_buff;
             
-                if (col_ptr == HEIGHT) begin
+                if (perm_read_ptr == HEIGHT*2) begin
                     if (row_ptr+1 == HEIGHT) begin
                         broadcast_valid <= '0;
                     end
                     older_row_ptr <= older_row_ptr + 1;
-                    perm_read_ptr <= 0;
-                    col_ptr <= 1;
+                    perm_read_ptr <= HEIGHT;
                 end
-            end else if (|ready && randomizer_state==0) begin 
+            end else if (|ready && randomizer_state==0) begin // depends on state to prevent partial swaps 
                 perm_we <= '0;
                 for (int i = 0; i < GAUS_UNITS; i++) begin
                     if (ready[i]) begin // the amount of units should be small enough for a priority encoder to not break timing
@@ -159,11 +161,10 @@ always_ff @(posedge clk or negedge reset) begin
                         free_ptr <= rename_table[i];
 
                         // initialize pointers
-                        perm_read_ptr <= '0;
+                        perm_read_ptr <= HEIGHT;
                         row_ptr <= '0;
                         older_row_ptr <= '0;
                         old_row_ptr <= '0;
-                        col_ptr <= 1;
                         
                         // set output signal
                         broadcast_to <= i;

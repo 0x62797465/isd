@@ -9,14 +9,15 @@ height = len(data)
 width = len(data[0])
 
 final_str = ""
-for a in range(0, width):
-    for b in range(0, height):
-        if (data[b][a] == '0' or data[b][a] == '1'):
-            final_str += data[b][a]
+for a in range(0, height):
+    for b in range(0, width):
+        if (data[a][b] == '0' or data[a][b] == '1'):
+            final_str += data[a][b]
 
 
 
-with open("src/matrix.bin", "w") as file_write:
-    file_write.write(final_str[::-1])
+with open("src/matrix.svh", "w") as file_write:
+    file_write.write("`define MATRIX " + str(len(final_str)) + "'b" + final_str[::-1])
+
 
 
