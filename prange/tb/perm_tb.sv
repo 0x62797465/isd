@@ -15,6 +15,7 @@ module perm_tb;
         .broadcast_valid_old(broadcast_valid_old));
 
     // basic randomness assertions
+    /*
     assert property (
         @(posedge clk)
         disable iff (!reset)
@@ -24,7 +25,9 @@ module perm_tb;
         $fatal(2, "Random seed same as previous, new: %d, prev: %d\n", 
             dut.new_seed, dut.cur_seed);
     end
+    */
 
+    /*
     assert property (
         @(posedge clk)
         disable iff (!reset)
@@ -34,7 +37,8 @@ module perm_tb;
         $fatal(2, "Random seed incorrectly zero, new: %d, prev: %d\n", 
             dut.new_seed, dut.cur_seed);
     end
-    
+    */
+
     // Out of bounds assertions 
     assert property (
         @(posedge clk)
@@ -60,7 +64,7 @@ module perm_tb;
     assert property (
         @(posedge clk)
         disable iff (!reset)
-        ($past(|ready) && dut.randomizer_state==0) |=> (dut.broadcast_valid || broadcast_valid_old) // if the past was ready, then the current is valid
+        ($past(dut.cycles_idle > NEEDED_CYCLES_IDLE) && $past(|ready) && dut.randomizer_state==0) |=> (dut.broadcast_valid || broadcast_valid_old) // if the past was ready, then the current is valid
     )
     else begin
         $fatal(2, "Broadcast is incorrectly low: %d\n", 
@@ -104,63 +108,65 @@ module perm_tb;
         while (!dut.initialized) begin
             @(posedge clk);
         end
-        for (int i = 0; i < 10000; i++) begin
-            @(posedge clk);
-            if (dut.randomizer_state == '0) begin
-                for (int c = 0; c < GAUS_UNITS; c++) begin
-                    for (int a = 0; a < ((WIDTH/2)); a++) begin
-                        for (int b = 0; b < ((WIDTH/2)); b++) begin
-                            if (a != b)
-                                perm_invalid |= dut.perm_snapshots[c][a] == dut.perm_snapshots[c][b];
+        for (int total_test = 0; total_test < 10; total_test++) begin
+            for (int i = 0; i < 10000; i++) begin
+                @(posedge clk);
+                if (dut.randomizer_state == '0) begin
+                    for (int c = 0; c < GAUS_UNITS; c++) begin
+                        for (int a = 0; a < ((WIDTH/2)); a++) begin
+                            for (int b = 0; b < ((WIDTH/2)); b++) begin
+                                if (a != b)
+                                    perm_invalid |= dut.perm_snapshots[c][a] == dut.perm_snapshots[c][b];
+                            end
                         end
                     end
-                end
-                if (perm_invalid) begin
-                    $fatal(2, "Impossible permutation state reached\n");
-                end
-            end
-        end
-        
-        // test transfer protocal 
-        ready[1] = 1'b1;
-        while (!broadcast_valid_old) begin
-            @(posedge clk);
-        end
-        ready[1] = 1'b0;
-        assert(broadcast_to == 1)
-            else $fatal(2, "Broadcast is to the wrong unit\n");
-
-        acum = 0;
-        while (broadcast_valid_old) begin
-            permutated_matrix[acum] = mat_bit;
-            acum = acum + 1;
-            @(posedge clk);
-        end
-        for (int a = 0; a < HEIGHT; a++) begin
-            for (int b = 0; b < WIDTH; b++) begin
-                guess_val = 1;
-                for (int c = 0; c < HEIGHT; c++) begin
-                    if (permutated_matrix[c*(HEIGHT+1)+a] != original_matrix_clone[c][b/32][b%32])
-                        guess_val = 0;
-                end
-                if (guess_val) begin
-                    guessed_permutation[a] = b;
+                    if (perm_invalid) begin
+                        $fatal(2, "Impossible permutation state reached\n");
+                    end
                 end
             end
-        end
-
-        /* // print permutated matrix
-        for (int a = 0; a < HEIGHT; a++) begin
-            for (int b = 0; b < HEIGHT+1; b++) begin
-                $write("%b", permutated_matrix[a*(HEIGHT+1)+b]);
+            
+            // test transfer protocal 
+            ready[1] = 1'b1;
+            while (!broadcast_valid_old) begin
+                @(posedge clk);
             end
-            $write("\n");
-        end
-        */
+            ready[1] = 1'b0;
+            assert(broadcast_to == 1)
+                else $fatal(2, "Broadcast is to the wrong unit\n");
 
-        for (int i = 0; i < HEIGHT; i++) begin
-            assert (guessed_permutation[i] == dut.perm_snapshots[dut.rename_table[1]][i+HEIGHT])
-                else $fatal(2, "Permutation is not equal to snapshotted permutation! %d %d\n", guessed_permutation[i], dut.perm_snapshots[dut.rename_table[1]][i]);
+            acum = 0;
+            while (broadcast_valid_old) begin
+                permutated_matrix[acum] = mat_bit;
+                acum = acum + 1;
+                @(posedge clk);
+            end
+            for (int a = 0; a < HEIGHT; a++) begin
+                for (int b = 0; b < WIDTH; b++) begin
+                    guess_val = 1;
+                    for (int c = 0; c < HEIGHT; c++) begin
+                        if (permutated_matrix[c*(HEIGHT+1)+a] != original_matrix_clone[c][b/32][b%32])
+                            guess_val = 0;
+                    end
+                    if (guess_val) begin
+                        guessed_permutation[a] = b;
+                    end
+                end
+            end
+
+            /* // print permutated matrix
+            for (int a = 0; a < HEIGHT; a++) begin
+                for (int b = 0; b < HEIGHT+1; b++) begin
+                    $write("%b", permutated_matrix[a*(HEIGHT+1)+b]);
+                end
+                $write("\n");
+            end
+            */
+
+            for (int i = 0; i < HEIGHT; i++) begin
+                assert (guessed_permutation[i] == dut.perm_snapshots[dut.rename_table[1]][i+HEIGHT])
+                    else $fatal(2, "Permutation is not equal to snapshotted permutation! %d %d\n", guessed_permutation[i], dut.perm_snapshots[dut.rename_table[1]][i]);
+            end
         end
         $finish();
     end

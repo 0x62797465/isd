@@ -5,8 +5,12 @@ module perm (
     input clk,
     input reset,
     input [GAUS_UNITS-1:0] ready,
+    input [GAUS_UNITS-1:0] correct,
+    input recv_ready,
+    input recv_next,
 
     output reg mat_bit,
+    output reg transmit_bit,
     output reg [$clog2(GAUS_UNITS)-1:0] broadcast_to,
     output reg broadcast_valid_old
 );
@@ -14,24 +18,24 @@ module perm (
 localparam int words = (WIDTH+1)/32;
 localparam logic [WIDTH*HEIGHT-1:0] tmp_matrix = `MATRIX;
 localparam logic [HEIGHT-1:0] tmp_syndrome = `SYNDROME;
-(* ramstyle = "M10K" *) reg [31:0] original_matrix [(HEIGHT-1):0] [words:0]; // = `MATRIX; TODO: Fix matrix definition // more mem usage less circut complexity  
+(* ramstyle = "M10K" *) reg [31:0] original_matrix [(HEIGHT*(words+1)-1):0]; // = `MATRIX; TODO: Fix matrix definition // more mem usage less circut complexity  
 initial begin
     for (int a = 0; a < HEIGHT; a++) begin
         for (int b = 0; b < WIDTH; b++) begin
-            original_matrix[a][b/32][b%32] = tmp_matrix[(a*WIDTH+b)];
+            original_matrix[a*(words+1)+b/32][b%32] = tmp_matrix[(a*WIDTH+b)];
         end
-        original_matrix[a][(WIDTH)/32][(WIDTH)%32] = tmp_syndrome[a];
+        original_matrix[a*(words+1)+WIDTH/32][(WIDTH)%32] = tmp_syndrome[a];
     end
 end
-reg [31:0] new_seed;
-reg [31:0] cur_seed;
+reg [63:0] new_seed;
+reg [63:0] cur_seed;
 
 // xorshift32
 always_comb begin
     new_seed = cur_seed;
     new_seed ^= new_seed << 13;
-	new_seed ^= new_seed >> 17;
-	new_seed ^= new_seed << 5;
+	new_seed ^= new_seed >> 7;
+	new_seed ^= new_seed << 17;
 end
 
 // copying logic
@@ -48,7 +52,7 @@ reg [$clog2(HEIGHT):0] older_row_ptr;
 
 reg [31:0] read_buff;
 always_ff @(posedge clk) begin
-    read_buff <= original_matrix[row_ptr][aligned_copy_ptr];
+    read_buff <= original_matrix[row_ptr*(words+1)+aligned_copy_ptr];
 end
 
  // this assumes that $clog2(HEIGHT) < 2^16; additionally it wastes memory to save compute
@@ -57,6 +61,7 @@ reg [15:0] perm_read_buff;
 reg [15:0] perm_write_buff;
 reg [$clog2(WIDTH+1):0] perm_write_ptr;
 reg [$clog2(WIDTH+1):0] perm_read_ptr;
+reg [$clog2((WIDTH+1)*16):0] unaligned_perm_read_ptr;
 reg [$clog2(GAUS_UNITS):0] read_unit_ptr;
 reg [$clog2(GAUS_UNITS):0] write_unit_ptr;
  
@@ -89,8 +94,13 @@ always_ff @(posedge clk or negedge reset) begin
     end
 end
 
+// transmittion logic
+reg tm_initialized;
+
 reg [GAUS_UNITS-1:0] [$clog2(GAUS_UNITS):0] rename_table;
 reg [$clog2(GAUS_UNITS):0] free_ptr;
+
+reg [$clog2(NEEDED_CYCLES_IDLE):0] cycles_idle;
 
 reg [2:0] randomizer_state;
 reg initialized; 
@@ -102,7 +112,7 @@ always_ff @(posedge clk or negedge reset) begin
             rename_table[i] <= i; // likely too small to need to be initialized
         end
         free_ptr <= GAUS_UNITS;
-        cur_seed <= seed_base;
+        cur_seed <= '0;
         copy_ptr <= 0;
         broadcast_valid <= 0;
         perm_we <= 1; // for initialization
@@ -111,13 +121,15 @@ always_ff @(posedge clk or negedge reset) begin
         perm_write_buff <= '0;
         randomizer_state <= '0;
         perm_read_ptr <= '0;
+        tm_initialized <= 0;
     end else begin
         if (!initialized) begin
+            cycles_idle <= '0;
             // sets all permutation snapshots (and the free one) to 1...N pointers
             perm_write_ptr <= perm_write_ptr + 1;
             perm_write_buff <= perm_write_ptr + 1;
             if (perm_write_ptr == WIDTH) begin
-                if (write_unit_ptr == GAUS_UNITS+1) begin
+                if (write_unit_ptr == GAUS_UNITS) begin
                     initialized <= '1;
                     perm_we <= '0;
                 end
@@ -125,6 +137,23 @@ always_ff @(posedge clk or negedge reset) begin
                 free_ptr <= GAUS_UNITS;
                 perm_write_buff <= '0;
                 write_unit_ptr <= write_unit_ptr + 1;
+            end
+        end else if (recv_ready) begin 
+            if (!tm_initialized) begin
+                tm_initialized <= '1;
+                for (int i = 0; i < GAUS_UNITS; i++) begin
+                    if (correct[i]) begin
+                        read_unit_ptr <= rename_table[i];
+                        perm_read_ptr <= HEIGHT;
+                        unaligned_perm_read_ptr <= HEIGHT*16;
+                    end
+                end
+            end else begin
+                if (recv_next) begin
+                    unaligned_perm_read_ptr <= unaligned_perm_read_ptr + 1;
+                    perm_read_ptr <= (unaligned_perm_read_ptr + 1)/16;
+                end
+                transmit_bit <= perm_read_buff[(perm_read_ptr-1)%16];
             end
         end else begin
             if (broadcast_valid || broadcast_valid_old) begin
@@ -144,11 +173,12 @@ always_ff @(posedge clk or negedge reset) begin
                 if (perm_read_ptr == HEIGHT*2) begin
                     if (row_ptr+1 == HEIGHT) begin
                         broadcast_valid <= '0;
+                        cycles_idle <= '0;
                     end
                     older_row_ptr <= older_row_ptr + 1;
                     perm_read_ptr <= HEIGHT;
                 end
-            end else if (|ready && randomizer_state==0) begin // depends on state to prevent partial swaps 
+            end else if (|ready && randomizer_state==0 && cycles_idle > NEEDED_CYCLES_IDLE) begin // depends on state to prevent partial swaps 
                 perm_we <= '0;
                 for (int i = 0; i < GAUS_UNITS; i++) begin
                     if (ready[i]) begin // the amount of units should be small enough for a priority encoder to not break timing
@@ -173,29 +203,35 @@ always_ff @(posedge clk or negedge reset) begin
                     end
                 end
             end else begin // The state machine is needed because a single swap requires many memory operations
+                cycles_idle <= cycles_idle + 1;
                 case (randomizer_state) 
                     3'd0 : begin
                         perm_we <= '0;
                         randomizer_state <= randomizer_state + 1;
                         write_unit_ptr <= free_ptr;
                         read_unit_ptr <= free_ptr;
-                        perm_read_ptr <= (new_seed[23:8]%(WIDTH/2))+(WIDTH/2);
+                        // prevents division in hardware
+                        if (WIDTH/2-1 < new_seed[$clog2(WIDTH/2)+8-1:8] || WIDTH/2-1 < cur_seed[$clog2(WIDTH/2)+8-1:8]) begin
+                            cur_seed <= (|cur_seed) ? new_seed : seed_base; 
+                            randomizer_state <= '0;
+                        end else 
+                            perm_read_ptr <= (new_seed[$clog2(WIDTH/2)+8-1:8])+(WIDTH/2);
                     end
                     3'd1 : begin // technically can be shortened by a cycle via a specific BRAM config (need to define if RAW or WAR occurs when set same cycle)
                         perm_we <= '0;
                         randomizer_state <= randomizer_state + 1;
-                        perm_read_ptr <= (cur_seed[23:8]%(WIDTH/2));
+                        perm_read_ptr <= (cur_seed[$clog2(WIDTH/2)+8-1:8]);
                     end
                     3'd2 : begin
                         perm_we <= 1;
                         randomizer_state <= randomizer_state + 1;
-                        perm_write_ptr <= (cur_seed[23:8]%(WIDTH/2));
+                        perm_write_ptr <= (cur_seed[$clog2(WIDTH/2)+8-1:8]);
                         perm_write_buff <= perm_read_buff;
                     end
                     3'd3 : begin
                         perm_we <= 1;
                         randomizer_state <= 0;
-                        perm_write_ptr <= (new_seed[23:8]%(WIDTH/2))+(WIDTH/2);
+                        perm_write_ptr <= (new_seed[$clog2(WIDTH/2)+8-1:8])+(WIDTH/2);
                         perm_write_buff <= perm_read_buff;
                         cur_seed <= (|cur_seed) ? new_seed : seed_base; 
                     end
