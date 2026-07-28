@@ -1,6 +1,6 @@
 import sys
 # Slightly modified matrix2header.py
-if (len(sys.argv) == 1):
+if (len(sys.argv) != 2):
     print("Usage: python " + sys.argv[0] + " syndrome.txt")
     exit()
 file = open(sys.argv[1], "r")

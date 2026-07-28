@@ -30,7 +30,7 @@ end
 reg [63:0] new_seed;
 reg [63:0] cur_seed;
 
-// xorshift32
+// xorshift64
 always_comb begin
     new_seed = cur_seed;
     new_seed ^= new_seed << 13;
@@ -153,7 +153,7 @@ always_ff @(posedge clk or negedge reset) begin
                     unaligned_perm_read_ptr <= unaligned_perm_read_ptr + 1;
                     perm_read_ptr <= (unaligned_perm_read_ptr + 1)/16;
                 end
-                transmit_bit <= perm_read_buff[(perm_read_ptr-1)%16];
+                transmit_bit <= perm_read_buff[(unaligned_perm_read_ptr)%16];
             end
         end else begin
             if (broadcast_valid || broadcast_valid_old) begin

@@ -15,7 +15,7 @@ reg [1:0] state = 2'b0;
 always @(posedge clk or negedge CPU_RESET_n) begin // putchar equivalent
     if (!CPU_RESET_n) begin
         tm_ready <= 1; // Mark as ready
-        UART_TX <= 0;
+        UART_TX <= 1;
 		baud <= 0; // reset counter
 		state <= 0;
         bit_ptr <= 0;
