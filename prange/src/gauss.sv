@@ -21,20 +21,21 @@ localparam int eliminate_warmup_wait = 4; // needs a cycle for the cache read to
 localparam int eliminate_warmup_cache_write = 5; // writes the read cached word
 localparam int eliminate = 6; // read stack, read next, xor prev & write to prev, write commit
 localparam int popcount_warmup = 7; // can only look ahead one cycle, we need an additional one
-localparam int popcount = 8; // read bit, add
+localparam int popcount = 8; // read bit, add, check
 localparam int stall = 9;
 reg [$clog2(stall)-1:0] state; // assumes that stall is the last state
 
 // matrix read/write handeling
 localparam WORD_SIZE = 32;
 localparam WIDTH_AUG = HEIGHT+1;
-(* ramstyle = "M10K" *) reg [WORD_SIZE-1:0] internal_mat [HEIGHT-1:0] [((WIDTH_AUG)/WORD_SIZE):0];
-
+localparam WORDS = WIDTH_AUG/WORD_SIZE+1;
+(* ramstyle = "M10K" *) reg [WORD_SIZE-1:0] internal_mat [HEIGHT*WORDS-1:0];
+// todo: change to struct
 reg mat_we;
 reg [$clog2(HEIGHT)-1:0] w_row_ptr;
-wire [$clog2(WIDTH_AUG/WORD_SIZE+1)-1:0] w_col_ptr;
+wire [$clog2(WORDS)-1:0] w_col_ptr;
 reg [$clog2(HEIGHT+2)-1:0] r_row_ptr; // +2 to account for select behavior
-wire [$clog2(WIDTH_AUG/WORD_SIZE+1)-1:0] r_col_ptr;
+wire [$clog2(WORDS)-1:0] r_col_ptr;
 reg [$clog2(WIDTH_AUG)-1:0] unaligned_w_ptr;
 reg [$clog2(WIDTH_AUG)-1:0] unaligned_r_ptr;
 
@@ -44,17 +45,31 @@ assign r_col_ptr = unaligned_r_ptr/WORD_SIZE;
 reg [WORD_SIZE-1:0] mat_write_buffer;
 reg [WORD_SIZE-1:0] mat_read_buffer;
 
+reg [$clog2(HEIGHT*WORDS)-1:0] w_mat_addr;
+reg [$clog2(HEIGHT*WORDS)-1:0] r_mat_addr;
+
+// Quartus will change these to Muxes if not multiplied explicity
+// in certain cases. DSPs are not strictly needed, since WORDS is
+// static.
+(* multstyle = "dsp" *)
+always_comb
+    w_mat_addr = w_row_ptr*WORDS+w_col_ptr;
+
+(* multstyle = "dsp" *)
+always_comb
+    r_mat_addr = r_row_ptr*WORDS+r_col_ptr;
+
 always_ff @(posedge clk) begin
     if (mat_we) begin
-        internal_mat[w_row_ptr][w_col_ptr] <= mat_write_buffer;
+        internal_mat[w_mat_addr] <= mat_write_buffer;
     end
-    mat_read_buffer <= internal_mat[r_row_ptr][r_col_ptr];
+    mat_read_buffer <= internal_mat[r_mat_addr];
 end 
 
 
 // elimination queue read/write handeling 
 (* ramstyle = "M10K" *) reg [15:0] eliminate_queue [HEIGHT-1:0];
-
+// todo: change to struct
 reg [$clog2(HEIGHT+1)-1:0] eliminate_head; // write pointer
 reg [$clog2(HEIGHT+1):0] eliminate_tail; // read pointer
 reg [15:0] eliminate_buff_w; // write buff
@@ -69,12 +84,14 @@ always_ff @(posedge clk) begin
 end
 
 // selection
+// todo: change to struct?
 reg [$clog2(WIDTH_AUG)-1:0] scan_col_ptr;
 reg [HEIGHT-1:0] free_list; // any row not yet used for elimination
 reg [$clog2(HEIGHT)-1:0] l_elim_row_ptr; // stores row that will be used for elimination
 reg l_elim_ptr_found; // for early termination on rank deficient matrixi
 
 // elimination
+// todo: change to struct
 reg [$clog2(WIDTH_AUG)-1:0] elim_col_ptr;
 reg [$clog2(HEIGHT)-1:0] elim_write_row_ptr;
 reg [WORD_SIZE-1:0] word_row_cache; // cache of the current row being used for elimination
@@ -113,16 +130,17 @@ always_ff @(posedge clk or negedge reset) begin
                     mat_write_buffer[0] <= mat_bit;
                 end
             end
-            // Some tricks are used to largely abstract a way the word size
+            // Some tricks are used to largely abstract away the word size,
             // such as writing more than we need, however this does not impact
             // timing (since we are limitted to one bit received at a time).
-            // We de-assert the write enable bit during the next stage because
+            // We de-assert the write enable bit during the next stage;
             // when the state is changed we still have to commit one last write.
             receive : begin
-                mat_write_buffer[(unaligned_w_ptr+1)%WORD_SIZE] <= mat_bit;
-                unaligned_w_ptr <= unaligned_w_ptr+1; // only affects the actual read pointer every 32 iterations
-                if (unaligned_w_ptr == WIDTH_AUG-1) begin
-                    if (w_row_ptr == HEIGHT-1) begin
+                // note that the const modulu is optimized to wiring the lower bits
+                mat_write_buffer[(unaligned_w_ptr + 1) % WORD_SIZE] <= mat_bit;
+                unaligned_w_ptr <= unaligned_w_ptr + 1; // only affects the actual read pointer every 32 (/word_size) iterations
+                if (unaligned_w_ptr == WIDTH_AUG - 1) begin
+                    if (w_row_ptr == HEIGHT - 1) begin
                         mat_we <= '0;
                         unaligned_r_ptr <= '0;
                         r_row_ptr <= '0;
@@ -143,7 +161,7 @@ always_ff @(posedge clk or negedge reset) begin
                 r_row_ptr <= r_row_ptr + 1;
                 state <= select;
                 if (scan_col_ptr == HEIGHT) begin
-                    unaligned_r_ptr <= WIDTH_AUG-1;
+                    unaligned_r_ptr <= WIDTH_AUG - 1;
                     r_row_ptr <= 0;
                     bitcount <= 0;
                     state <= popcount_warmup;
@@ -235,8 +253,6 @@ always_ff @(posedge clk or negedge reset) begin
                 state <= popcount;
             end
             popcount : begin
-                bitcount <= bitcount + mat_read_buffer[(WIDTH_AUG-1)%WORD_SIZE];
-                r_row_ptr <= r_row_ptr + 1;
                 if (r_row_ptr == HEIGHT+1) begin // if the value read a cycle ago is invalid
                     if (bitcount == TARGET_WEIGHT) begin
                         correct <= 1;
@@ -245,6 +261,9 @@ always_ff @(posedge clk or negedge reset) begin
                         state <= uninitialized;
                         done <= 1;
                     end
+                end else begin
+                    bitcount <= bitcount + mat_read_buffer[(WIDTH_AUG-1)%WORD_SIZE];
+                    r_row_ptr <= r_row_ptr + 1;
                 end
             end
             stall : begin

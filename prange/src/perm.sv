@@ -15,16 +15,16 @@ module perm (
     output reg broadcast_valid_old
 );
 
-localparam int words = (WIDTH+1)/32;
+localparam int WORDS = (WIDTH+1)/32;
 localparam logic [WIDTH*HEIGHT-1:0] tmp_matrix = `MATRIX;
 localparam logic [HEIGHT-1:0] tmp_syndrome = `SYNDROME;
-(* ramstyle = "M10K" *) reg [31:0] original_matrix [(HEIGHT*(words+1)-1):0]; // = `MATRIX; TODO: Fix matrix definition // more mem usage less circut complexity  
+(* ramstyle = "M10K" *) reg [31:0] original_matrix [(HEIGHT*(WORDS+1)-1):0]; // = `MATRIX; TODO: Fix matrix definition // more mem usage less circut complexity  
 initial begin
     for (int a = 0; a < HEIGHT; a++) begin
         for (int b = 0; b < WIDTH; b++) begin
-            original_matrix[a*(words+1)+b/32][b%32] = tmp_matrix[(a*WIDTH+b)];
+            original_matrix[a*(WORDS+1)+b/32][b%32] = tmp_matrix[(a*WIDTH+b)];
         end
-        original_matrix[a*(words+1)+WIDTH/32][(WIDTH)%32] = tmp_syndrome[a];
+        original_matrix[a*(WORDS+1)+WIDTH/32][(WIDTH)%32] = tmp_syndrome[a];
     end
 end
 reg [63:0] new_seed;
@@ -49,14 +49,19 @@ reg [$clog2(HEIGHT):0] row_ptr;
 reg [$clog2(HEIGHT):0] old_row_ptr;
 reg [$clog2(HEIGHT):0] older_row_ptr;
 
+reg [$clog2((HEIGHT*(WORDS+1)-1))-1:0] read_addr; 
+
+(* multstyle = "dsp" *)
+always_comb
+    read_addr = row_ptr[$clog2(HEIGHT)-1:0]*(WORDS+1)+aligned_copy_ptr;
 
 reg [31:0] read_buff;
 always_ff @(posedge clk) begin
-    read_buff <= original_matrix[row_ptr*(words+1)+aligned_copy_ptr];
+    read_buff <= original_matrix[read_addr];
 end
 
  // this assumes that $clog2(HEIGHT) < 2^16; additionally it wastes memory to save compute
-(* ramstyle = "M10K" *) reg [15:0] perm_snapshots [GAUS_UNITS:0] [WIDTH:0];
+(* ramstyle = "M10K" *) reg [15:0] perm_snapshots [(GAUS_UNITS+1)*(WIDTH+1)-1:0];
 reg [15:0] perm_read_buff;
 reg [15:0] perm_write_buff;
 reg [$clog2(WIDTH+1):0] perm_write_ptr;
@@ -65,11 +70,20 @@ reg [$clog2((WIDTH+1)*16):0] unaligned_perm_read_ptr;
 reg [$clog2(GAUS_UNITS):0] read_unit_ptr;
 reg [$clog2(GAUS_UNITS):0] write_unit_ptr;
  
+reg [(GAUS_UNITS+1)*(WIDTH+1)-1:0] p_read_addr;
+reg [(GAUS_UNITS+1)*(WIDTH+1)-1:0] p_write_addr;
+
+always_comb
+    p_read_addr = read_unit_ptr*(WIDTH+1)+perm_read_ptr;
+
+always_comb
+    p_write_addr = write_unit_ptr*(WIDTH+1)+perm_write_ptr;
+
 reg perm_we;
 always_ff @(posedge clk) begin
-    perm_read_buff <= perm_snapshots[read_unit_ptr][perm_read_ptr];
+    perm_read_buff <= perm_snapshots[p_read_addr];
     if (perm_we)
-        perm_snapshots[write_unit_ptr][perm_write_ptr] <= perm_write_buff;
+        perm_snapshots[p_write_addr] <= perm_write_buff;
 end
 
 

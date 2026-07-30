@@ -1,11 +1,26 @@
+Logic utilization (in ALMs)	27,408 / 29,080 ( 94 % )
+Total registers	28019
+Total pins	21 / 364 ( 6 % )
+Total virtual pins	0
+Total block memory bits	2,294,074 / 4,567,040 ( 50 % )
+Total DSP Blocks	74 / 150 ( 49 % )
+Total HSSI RX PCSs	0 / 6 ( 0 % )
+Total HSSI PMA RX Deserializers	0 / 6 ( 0 % )
+Total HSSI TX PCSs	0 / 6 ( 0 % )
+Total HSSI PMA TX Serializers	0 / 6 ( 0 % )
+Total PLLs	0 / 12 ( 0 % )
+Total DLLs	0 / 4 ( 0 % )
+
+116.24 MHz	116.24 MHz	CLOCK_50_B5B
+
 `ifndef PARAMS_GAURD
 `define PARAMS_GAURD
 `include "matrix.svh"
 `include "syndrome.svh"
 
 // problem information
-localparam int TARGET_WEIGHT = 27;
-localparam int WIDTH = 200;
+localparam int TARGET_WEIGHT = 28;
+localparam int WIDTH = 210;
 localparam int HEIGHT = WIDTH/2;
 localparam int WIDTH_LOG2 = $clog2(WIDTH);
 localparam int HEIGHT_LOG2 = $clog2(HEIGHT);
@@ -20,3 +35,4 @@ localparam int GAUS_UNITS = 2; // per unit
 localparam int NEEDED_CYCLES_IDLE = 20; // at least 5ish swaps (ranges)
 
 `endif
+

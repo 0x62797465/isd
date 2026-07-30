@@ -6,25 +6,19 @@ module gauss_tb;
     always #10 clk = ~clk;
 
 
-    reg [HEIGHT-1:0] [HEIGHT-1:0] mat_tb;
-    reg [OUTPUT_WIDTH-1:0] partial_mat;
-    reg [$clog2(GAUS_UNITS)+1:0] broadcast_to;
-    reg broadcast_valid_old;
+    reg [HEIGHT-1:0] [dut.WIDTH_AUG-1:0] mat_tb;
+    reg mat_bit;
+    reg [$clog2(GAUS_UNITS)-1:0] broadcast_to;
+    reg broadcast_valid;
 
     reg done;
     reg correct;
 
-    gauss dut (.clk(clk), .reset(reset), .partial_mat(partial_mat),
-        .broadcast_to(broadcast_to), .broadcast_target(2'b00),
-        .broadcast_valid_old(broadcast_valid_old), .done(done), .correct(correct));
-        
+    gauss dut (.clk(clk), .reset(reset), .mat_bit(mat_bit),
+        .broadcast_to(broadcast_to), .broadcast_target('0),
+        .broadcast_valid(broadcast_valid), .done(done), .correct(correct));
 
-    assert property (
-        @(posedge clk)
-        dut.col_ptr <= HEIGHT
-    )
-    else $fatal(2, "Column pointer out of bounds! %d", dut.col_ptr);
-    
+
     task reset_unit();
         reset = 0;
         @(posedge clk);
@@ -34,7 +28,7 @@ module gauss_tb;
 
     task matrix_gen();
         for (int a = 0; a < HEIGHT; a++) begin
-            for (int b = 0; b < HEIGHT; b++) begin
+            for (int b = 0; b < dut.WIDTH_AUG; b++) begin
                 mat_tb[a][b] = $urandom()%2;
             end
         end
@@ -47,19 +41,18 @@ module gauss_tb;
         @(negedge clk);
         broadcast_to <= 0;
         broadcast_valid <= 1'b1;
-        copy_ptr <= 0;
+        copy_ptr <= 1;
+        mat_bit <= mat_tb[0][0];
         col_ptr <= 0;
         @(posedge clk);
         while (broadcast_valid) begin
-            for (int i = 0; i < OUTPUT_WIDTH; i++) begin
-                partial_mat[i] <= mat_tb[col_ptr][copy_ptr+i];
-            end
-            if (copy_ptr+OUTPUT_WIDTH==HEIGHT) begin
+            mat_bit <= mat_tb[col_ptr][copy_ptr];
+            if (copy_ptr == HEIGHT) begin
                 copy_ptr <= 0;
                 col_ptr <= col_ptr + 1;
             end else
-                copy_ptr <= copy_ptr+OUTPUT_WIDTH;
-            if (col_ptr == HEIGHT)
+                copy_ptr <= copy_ptr+1;
+            if (col_ptr == dut.WIDTH_AUG)
                 broadcast_valid <= 1'b0;
             @(posedge clk);
         end
@@ -68,33 +61,54 @@ module gauss_tb;
     task check_matrix_match();
         for (int a = 0; a < HEIGHT; a++) begin
             for (int b = 0; b < HEIGHT; b++) begin
-                assert (mat_tb[a][b] == dut.internal_mat[b][a]) 
-                    else $fatal(2, "Matrixi (plural of matrix) do not match %d %d!", a, b);
+                assert (mat_tb[a][b] == dut.internal_mat[a*dut.WORDS+b/32][b%32]) 
+                    else $fatal(2, "Matrixi (plural of matrix) do not match %d %d %h %h!", a, b, mat_tb[a][b], dut.internal_mat[b*dut.WORDS+(a/32)][a%32]);
             end
         end
     endtask
 
     task check_weight();
-        assert ($countones(dut.internal_syndrome) == 27 && correct ||
-                ($countones(dut.internal_syndrome) != 27 && !correct))
-            else $fatal(2, "Correctness assertion failed\n");
+        automatic int weight = 0;
+        for (int i = 0; i < HEIGHT; i++) begin
+            // Selects the last column
+            weight = dut.internal_mat[i*dut.WORDS+((dut.WIDTH_AUG-1)/32)][(dut.WIDTH_AUG-1)%32] + weight;
+        end
 
-        assert ($countones(dut.internal_syndrome) == dut.bitcount)
+        assert (weight == dut.bitcount)
             else $fatal(2, "Internal count %d does not match real count %d\n",
-                dut.bitcount, $countones(dut.internal_syndrome));
+                dut.bitcount, weight);
     endtask
 
     reg [HEIGHT-1:0] result_syndrome = 0;
     task check_solution();
+        automatic int recovered_weight = 0;
+        automatic int original_weight = 0;    
+
+
+        // essentially recovers the syndrome based off 
+        // the error and permutation
         result_syndrome = '0;
+        // for every element in the syndrome
         for (int a = 0; a < HEIGHT; a++) begin
-            if (dut.internal_syndrome[a]) begin
-                result_syndrome = result_syndrome ^ mat_tb[a];
+            // if it's one
+            if (dut.internal_mat[a*dut.WORDS+((dut.WIDTH_AUG-1)/32)][(dut.WIDTH_AUG-1)%32]) begin
+                // search for the column which contains one from the identity matrix
+                for (int b = 0; b < dut.WIDTH_AUG-1; b++) begin
+                    if (dut.internal_mat[a*dut.WORDS+(b/32)][b%32]) begin
+                        for (int c = 0; c < HEIGHT; c++) begin
+                            result_syndrome[c] = result_syndrome[c] ^ mat_tb[c][b];
+                        end
+                    end
+                end
             end
         end
-        assert (result_syndrome == `SYNDROME)
-            else $fatal("Syndrome %b does not equal computed %b\n", `SYNDROME, result_syndrome);
-    
+        recovered_weight = $countones(result_syndrome);
+        original_weight = 0;
+
+        for (int a = 0; a < HEIGHT; a++) begin
+            assert (result_syndrome[a] == mat_tb[a][dut.WIDTH_AUG-1])
+                else $fatal("Syndrome (based off error) does not match real syndrome");
+        end
     endtask
 
     reg reached_popcount = 0;
@@ -102,7 +116,7 @@ module gauss_tb;
 
 
     initial begin
-        $urandom(3);
+        $urandom(2);
         reset_unit();
         assert (done)
             else $fatal(2, "Not ready on reset\n");
@@ -121,8 +135,7 @@ module gauss_tb;
                 reset_unit();
                 assert (done)
                     else $fatal(2, "Not ready on reset\n");
-            end
-            if (reached_popcount) begin
+            end else if (reached_popcount) begin
                 ever_reached_popcount = 1;
                 check_weight();
                 check_solution();

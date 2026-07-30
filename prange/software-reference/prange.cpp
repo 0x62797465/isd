@@ -31,15 +31,13 @@ uint8_t augment_rref() {
         rref_aug_mat[a][height] = syndrome[a];
     }
 
-    
-    uint16_t w = w2;
-
     // attempt rref
     uint16_t swap_ptr = 0;
     bool found = false;
     bool tmp_coord;
 
-
+    boost::dynamic_bitset<> cached_row;
+    cached_row.resize(height);
     for (uint16_t a = 0; a < height; a++) {
         found = false;
         for (uint16_t b = a; b < height; b++) {
@@ -52,24 +50,23 @@ uint8_t augment_rref() {
         if (!found) {
             return 1;
         }
-
+        cached_row = rref_aug_mat[swap_ptr];
         // vector at a = vector at swap_ptr
         std::swap(rref_aug_mat[a], rref_aug_mat[swap_ptr]);
-
         // actual reduction
         for (uint16_t b = 0; b < height; b++) {
-            if (rref_aug_mat[b][a] && b != a) {
-                if (rref_aug_mat[a][height]) { // if the bit will flip
-                    if (rref_aug_mat[b][height]) { // if it will flip to zero
-                        w -= 1;
-                    } else { // if it will flip to one
-                        w += 1;
-                    }
-                } 
-                rref_aug_mat[b] ^= rref_aug_mat[a];
+            if (rref_aug_mat[b][a]) {
+                rref_aug_mat[b] ^= cached_row;
             }
         }
+        rref_aug_mat[a] = cached_row;
 
+    }
+    uint16_t w = 0;
+    for (uint16_t b = 0; b < height; b++) {
+        if (rref_aug_mat[b][height]) {
+            w++;
+        }
     }
     if (w == weight) {
         return 0;
