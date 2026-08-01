@@ -33,7 +33,7 @@ generate
     end
 endgenerate
 
-char_out char_out (.clk(`CLK), .CPU_RESET_n(CPU_RESET_n), 
+char_out char_out (.clk(`CLK), .reset(CPU_RESET_n), 
     .chr(word), .chr_ready(word_ready), .tm_ready(tm_done), 
     .UART_TX(UART_TX));
 
@@ -41,6 +41,7 @@ char_out char_out (.clk(`CLK), .CPU_RESET_n(CPU_RESET_n),
 // since it's only really used once at the near end
 reg [$clog2(10):0] delay; // loose delay to simplify transmittion
 reg [$clog2(HEIGHT*16)-1:0] counter; // 16 bits per pointer
+reg [$clog2(DELAY_BETWEEN_BROADCAST*CLOCK_HZ)-1:0] cycles_till_broadcast;
 reg broadcasted_correct;
 
 always_ff @(posedge `CLK or negedge CPU_RESET_n) begin
@@ -55,6 +56,7 @@ always_ff @(posedge `CLK or negedge CPU_RESET_n) begin
         if (!broadcasted_correct) begin
             if (counter == (HEIGHT*16)) begin
                 broadcasted_correct <= 1;
+                cycles_till_broadcast <= DELAY_BETWEEN_BROADCAST*CLOCK_HZ;
                 recv_ready <= 0;
             end
             recv_next <= 0;
@@ -86,6 +88,15 @@ always_ff @(posedge `CLK or negedge CPU_RESET_n) begin
                 word_ready <= 1;
                 waiting <= '0;
             end
+        end else begin
+            recv_from <= 0;
+            recv_ready <= 0;
+            recv_next <= 0;
+            waiting <= 0;
+            counter <= 0;
+            cycles_till_broadcast <= cycles_till_broadcast - 1;
+            if (cycles_till_broadcast == 0)
+                broadcasted_correct <= 0;
         end
     end
 end

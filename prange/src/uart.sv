@@ -1,19 +1,21 @@
+`include "params.svh"
+
 // taken from previous cpu project
 module char_out (
 	input [7:0]        chr,
 	input              chr_ready,
 	input              clk,
-    input              CPU_RESET_n,
-	output     reg     tm_ready = 1'b1,
+    input              reset,
+	output     reg     tm_ready,
     output     reg     UART_TX
 );
 
-reg [9:0] baud = 10'b0;
-reg [2:0] bit_ptr = 3'b0;
-reg [1:0] state = 2'b0;
+reg [$clog2(CLOCK_HZ/BAUD_RATE)-1:0] baud;
+reg [2:0] bit_ptr;
+reg [1:0] state;
 
-always @(posedge clk or negedge CPU_RESET_n) begin // putchar equivalent
-    if (!CPU_RESET_n) begin
+always @(posedge clk or negedge reset) begin // putchar equivalent
+    if (!reset) begin
         tm_ready <= 1; // Mark as ready
         UART_TX <= 1;
 		baud <= 0; // reset counter
@@ -21,7 +23,7 @@ always @(posedge clk or negedge CPU_RESET_n) begin // putchar equivalent
         bit_ptr <= 0;
 	end
 	else begin
-		if (baud == 434) begin // 50,000,000/115,200=434
+		if (baud == CLOCK_HZ/BAUD_RATE) begin // 50,000,000/115,200=434
 			baud <= 0;
 			case (state)
 				2'b00 : begin // lower signal to signal a start of a byte

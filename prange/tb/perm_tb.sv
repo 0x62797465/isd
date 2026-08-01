@@ -10,7 +10,8 @@ module perm_tb;
     reg broadcast_valid_old = '0;
     always #10 clk = ~clk;
 
-    perm dut (.clk(clk), .reset(reset), .seed_base(seed_base),
+    perm dut (.clk(clk), .reset(reset), .correct('0), 
+        .seed_base(seed_base), .recv_ready('0), .recv_next('0),
         .ready(ready), .mat_bit(mat_bit), .broadcast_to(broadcast_to),
         .broadcast_valid_old(broadcast_valid_old));
 
@@ -75,18 +76,16 @@ module perm_tb;
     
     reg [$clog2(HEIGHT*(HEIGHT+1)):0] acum = '0;
     reg perm_invalid = 0;
-    reg [(WIDTH/2)-1:0] [WIDTH_LOG2-1:0] guessed_permutation = '0;
+    reg [HEIGHT-1:0] [WIDTH_LOG2-1:0] guessed_permutation = '0;
 
     localparam int words = (WIDTH)/32;
     localparam logic [WIDTH*HEIGHT-1:0] tmp_matrix = `MATRIX;
-    reg [31:0] original_matrix_clone [(HEIGHT-1):0] [((WIDTH)/32):0];
+    reg [31:0] original_matrix_clone [HEIGHT-1:0] [words:0];
     reg guess_val;
     initial begin
         for (int a = 0; a < HEIGHT; a++) begin
-            for (int b = 0; b < words+1; b++) begin
-                for (int c = 0; c < 32; c++) begin
-                    original_matrix_clone[a][b][c] = tmp_matrix[(a*WIDTH+b*32+c)%(WIDTH*HEIGHT-1)];
-                end
+            for (int b = 0; b < WIDTH; b++) begin
+                original_matrix_clone[a][b/32][b%32] = tmp_matrix[(a*WIDTH+b)];
             end
         end
 
@@ -111,17 +110,15 @@ module perm_tb;
         for (int total_test = 0; total_test < 10; total_test++) begin
             for (int i = 0; i < 10000; i++) begin
                 @(posedge clk);
-                if (dut.randomizer_state == '0) begin
+                if (dut.randomizer_state == 2) begin
                     for (int c = 0; c < GAUS_UNITS; c++) begin
-                        for (int a = 0; a < ((WIDTH/2)); a++) begin
-                            for (int b = 0; b < ((WIDTH/2)); b++) begin
-                                if (a != b)
-                                    perm_invalid |= dut.perm_snapshots[c][a] == dut.perm_snapshots[c][b];
+                        for (int a = 0; a < HEIGHT; a++) begin
+                            for (int b = 0; b < HEIGHT; b++) begin
+                                assert (a == b || dut.perm_snapshots[c*(WIDTH+1)+a] != dut.perm_snapshots[c*(WIDTH+1)+b]) 
+                                    else $fatal(2, "Impossible permutation state reached %d %d %d %d\n",
+                                        a, b, dut.perm_snapshots[c*(WIDTH+1)+a], dut.perm_snapshots[c*(WIDTH+1)+b]);
                             end
                         end
-                    end
-                    if (perm_invalid) begin
-                        $fatal(2, "Impossible permutation state reached\n");
                     end
                 end
             end
@@ -148,24 +145,31 @@ module perm_tb;
                         if (permutated_matrix[c*(HEIGHT+1)+a] != original_matrix_clone[c][b/32][b%32])
                             guess_val = 0;
                     end
-                    if (guess_val) begin
+                    if (guess_val)
                         guessed_permutation[a] = b;
-                    end
                 end
             end
 
-            /* // print permutated matrix
+            /*
+            // print permutated matrix
             for (int a = 0; a < HEIGHT; a++) begin
                 for (int b = 0; b < HEIGHT+1; b++) begin
                     $write("%b", permutated_matrix[a*(HEIGHT+1)+b]);
                 end
                 $write("\n");
             end
+            for (int a = 0; a < HEIGHT; a++) begin
+                for (int b = 0; b < WIDTH+1; b++) begin
+                    $write("%b", original_matrix_clone[a][b/32][b%32]);
+                end
+                $write("\n");
+            end
             */
 
             for (int i = 0; i < HEIGHT; i++) begin
-                assert (guessed_permutation[i] == dut.perm_snapshots[dut.rename_table[1]][i+HEIGHT])
-                    else $fatal(2, "Permutation is not equal to snapshotted permutation! %d %d\n", guessed_permutation[i], dut.perm_snapshots[dut.rename_table[1]][i]);
+                assert (guessed_permutation[i] == dut.perm_snapshots[dut.rename_table[1]*(WIDTH+1)+i+HEIGHT])
+                    else $fatal("Permutation is not equal to snapshotted permutation! %d %d\n", guessed_permutation[i], 
+                        dut.perm_snapshots[dut.rename_table[1]*(WIDTH+1)+i+HEIGHT]);
             end
         end
         $finish();

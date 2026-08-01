@@ -116,6 +116,7 @@ reg [$clog2(GAUS_UNITS):0] free_ptr;
 
 reg [$clog2(NEEDED_CYCLES_IDLE):0] cycles_idle;
 
+reg freeze;
 reg [2:0] randomizer_state;
 reg initialized; 
 always_ff @(posedge clk or negedge reset) begin
@@ -135,6 +136,7 @@ always_ff @(posedge clk or negedge reset) begin
         perm_write_buff <= '0;
         randomizer_state <= '0;
         perm_read_ptr <= '0;
+        freeze <= 0;
         tm_initialized <= 0;
     end else begin
         if (!initialized) begin
@@ -153,8 +155,9 @@ always_ff @(posedge clk or negedge reset) begin
                 write_unit_ptr <= write_unit_ptr + 1;
             end
         end else if (recv_ready) begin 
+            freeze <= 1;
             if (!tm_initialized) begin
-                tm_initialized <= '1;
+                tm_initialized <= 1;
                 for (int i = 0; i < GAUS_UNITS; i++) begin
                     if (correct[i]) begin
                         read_unit_ptr <= rename_table[i];
@@ -169,6 +172,8 @@ always_ff @(posedge clk or negedge reset) begin
                 end
                 transmit_bit <= perm_read_buff[(unaligned_perm_read_ptr)%16];
             end
+        end else if (freeze) begin
+            tm_initialized <= 0;
         end else begin
             if (broadcast_valid || broadcast_valid_old) begin
                 // cycle delayed row pointer
