@@ -4,61 +4,57 @@ module perm_tb;
     reg clk = 0;
     reg reset = 0;
     reg [31:0] seed_base = '1;
-    reg [GAUS_UNITS-1:0] ready = '0;
+    reg [GAUS_UNITS-1:0] ready;
     reg mat_bit;
-    reg [$clog2(GAUS_UNITS)-1:0] broadcast_to = '0;
-    reg broadcast_valid_old = '0;
+    reg [$clog2(GAUS_UNITS)-1:0] broadcast_to;
+    reg broadcast_valid_old;
     always #10 clk = ~clk;
 
     perm dut (.clk(clk), .reset(reset), .correct('0), 
         .seed_base(seed_base), .recv_ready('0), .recv_next('0),
         .ready(ready), .mat_bit(mat_bit), .broadcast_to(broadcast_to),
-        .broadcast_valid_old(broadcast_valid_old));
+        .broadcast_valid_old(broadcast_valid_old), .transmit_bit());
 
     // basic randomness assertions
-    /*
     assert property (
         @(posedge clk)
         disable iff (!reset)
-        (dut.cur_seed != seed_base) |-> (dut.new_seed != dut.cur_seed)
+        (dut.randomizer_state == 2) |-> (dut.new_seed != dut.cur_seed)
     )
     else begin
         $fatal(2, "Random seed same as previous, new: %d, prev: %d\n", 
             dut.new_seed, dut.cur_seed);
     end
-    */
 
-    /*
     assert property (
         @(posedge clk)
         disable iff (!reset)
-        (dut.cur_seed == seed_base) || (dut.new_seed != '0)
+        (dut.randomizer_state == 2 ) |-> (dut.new_seed != '0)  
     )
     else begin
         $fatal(2, "Random seed incorrectly zero, new: %d, prev: %d\n", 
             dut.new_seed, dut.cur_seed);
     end
-    */
 
     // Out of bounds assertions 
     assert property (
         @(posedge clk)
         disable iff (!reset)
-        (dut.perm_write_ptr < WIDTH+1)
+        (dut.perm.write_ptr < WIDTH+1)
     )
     else begin
         $fatal(2, "Out of bounds write to permutation matrix %d\n", 
-            dut.perm_write_ptr);
+            dut.perm.write_ptr);
     end
 
     assert property (
         @(posedge clk)
         disable iff (!reset)
-        (dut.perm_read_ptr < WIDTH+1)
+        (dut.perm.read_ptr < WIDTH+1)
     )
     else begin
         $fatal(2, "Out of bounds read to permutation matrix %d\n", 
-            dut.perm_read_ptr);
+            dut.perm.read_ptr);
     end
 
     // Make sure readieness is asserted
@@ -88,6 +84,8 @@ module perm_tb;
                 original_matrix_clone[a][b/32][b%32] = tmp_matrix[(a*WIDTH+b)];
             end
         end
+
+        ready <= '0;
 
         // drive for a fixed amount of cycles; make sure permutation state is sane
         reset = 0;
@@ -167,9 +165,9 @@ module perm_tb;
             */
 
             for (int i = 0; i < HEIGHT; i++) begin
-                assert (guessed_permutation[i] == dut.perm_snapshots[dut.rename_table[1]*(WIDTH+1)+i+HEIGHT])
+                assert (guessed_permutation[i] == dut.perm_snapshots[dut.perm.rename_table[1]*(WIDTH+1)+i+HEIGHT])
                     else $fatal("Permutation is not equal to snapshotted permutation! %d %d\n", guessed_permutation[i], 
-                        dut.perm_snapshots[dut.rename_table[1]*(WIDTH+1)+i+HEIGHT]);
+                        dut.perm_snapshots[dut.perm.rename_table[1]*(WIDTH+1)+i+HEIGHT]);
             end
         end
         $finish();
