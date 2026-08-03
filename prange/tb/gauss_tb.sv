@@ -107,7 +107,7 @@ module gauss_tb;
 
         for (int a = 0; a < HEIGHT; a++) begin
             assert (result_syndrome[a] == mat_tb[a][dut.WIDTH_AUG-1])
-                else $fatal("Syndrome (based off error) does not match real syndrome");
+                else $fatal(2, "Syndrome (based off error) does not match real syndrome");
         end
     endtask
 

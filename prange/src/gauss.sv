@@ -217,30 +217,34 @@ always_ff @(posedge clk or negedge reset) begin
                 state <= eliminate;
             end
             eliminate : begin
-                mat.we <= 1;
-                queue.head <= queue.head + 1;
-                mat.r_row <= queue.buff_r;
                 mat.w_row <= elim_write_row_ptr;
                 mat.w_buff <= mat.r_buff ^ word_row_cache;
                 
-                if (queue.head > queue.tail+2) begin // if what we set last cycle was out-of-bounds 
-                    queue.head <= 0; // begin set up for next round
-                end
                 if (queue.head == 0 || &queue.tail) begin
                     queue.head <= 1;
                     mat.we <= 0;
-                    mat.r_row <= l_elim_row_ptr;
-                    elim_col_ptr <= elim_col_ptr + WORD_SIZE;
-                    mat.r_col <= elim_col_ptr + WORD_SIZE;
                     mat.w_col <= elim_col_ptr + WORD_SIZE;
 
-                    state <= eliminate_warmup_wait;
                     if (elim_col_ptr/WORD_SIZE == (WIDTH_AUG-1)/WORD_SIZE || &queue.tail) begin
                         scan_col_ptr <= scan_col_ptr + 1;
                         state <= select_warmup;
                         mat.r_col <= scan_col_ptr + 1;
                         mat.r_row <= 0;
+                    end else begin
+                        state <= eliminate_warmup_wait;
+                        mat.r_col <= elim_col_ptr + WORD_SIZE;
+                        mat.r_row <= l_elim_row_ptr;
                     end
+
+                    elim_col_ptr <= elim_col_ptr + WORD_SIZE;
+                end else begin
+                    if (queue.head > queue.tail+2) begin // if what we set last cycle was out-of-bounds 
+                        queue.head <= 0; // begin set up for next round
+                    end else
+                        queue.head <= queue.head + 1;
+
+                    mat.we <= 1;
+                    mat.r_row <= queue.buff_r;
                 end
                 elim_write_row_ptr <= mat.r_row;
             end
