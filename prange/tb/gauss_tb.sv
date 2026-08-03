@@ -1,10 +1,10 @@
 `include "../src/params.svh"
 
 module gauss_tb;
+    localparam int TEST_ITERATIONS = 200;
     reg clk = 0;
     reg reset = 0;
     always #10 clk = ~clk;
-
 
     reg [HEIGHT-1:0] [dut.WIDTH_AUG-1:0] mat_tb;
     reg mat_bit;
@@ -114,13 +114,14 @@ module gauss_tb;
     reg reached_popcount = 0;
     reg ever_reached_popcount = 0;
 
+    int n_rank_defficient = 0;
 
     initial begin
-        $urandom(2);
+        automatic int silence = $urandom(2);
         reset_unit();
         assert (done)
             else $fatal(2, "Not ready on reset\n");
-        for (int i = 0; i < 1000; i++) begin
+        for (int i = 0; i < TEST_ITERATIONS; i++) begin
             matrix_gen();
             transfer_matrix();
             check_matrix_match();
@@ -140,9 +141,11 @@ module gauss_tb;
                 check_weight();
                 check_solution();
             end
+            n_rank_defficient = n_rank_defficient + reached_popcount;
         end
         assert (ever_reached_popcount) 
             else $fatal(2, "Never reached popcount!\n");
+        $write("%h/%h iterations were not rank defficient (should be around 30 percent)\n", n_rank_defficient, TEST_ITERATIONS);
         $finish();
     end
 endmodule
