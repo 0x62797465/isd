@@ -1,33 +1,46 @@
 `include "../src/params.svh"
 
 module prange_tb;
+    localparam int iterations = 10000000;
+
     reg clk = 0;
     reg reset = 0;
     always #10 clk = ~clk;
     wire [7:0] LEDG;
-    prange dut (.CLOCK_125_p(clk), .CLOCK_50_B5B(clk),
-        .CPU_RESET_n(reset), .LEDG(LEDG));
+    prange dut (.CLOCK_50_B5B(clk),
+        .CPU_RESET_n(reset), .LEDG(LEDG), .LEDR(), .UART_TX());
     
     reg [GAUS_UNITS-1:0] ALREADY_VALID = 0;
+
+    longint cycles = 0;
+    longint eliminations = 0;
+    longint perm_idle = 0;
+    longint gauss_idle = 0;
+
     initial begin
         reset = 0;
         @(posedge clk);
         @(negedge clk);
+        assert (TOTAL_UNITS == 1)
+            else $fatal(0, "Please set total units to one in the header file\n");
         reset = 1;
-        while (!(|ALREADY_VALID)) begin
+        for (int i = 0; i < iterations; i++) begin
             @(posedge clk);
-            if (LEDG) begin
-                for (int i = 0; i < GAUS_UNITS; i++) begin
-                    if (dut.gauss_correct[i] && !ALREADY_VALID[i]) begin
-                        ALREADY_VALID[i] = 1'b1;
-                        for (int a = 0; a < HEIGHT; a++) begin
-                            $write("%h ", dut.perm.perm_snapshots[i][a]);
-                        end
-                        $write("\n");
-                    end
-                end
+            cycles = cycles + 1; 
+            if (|LEDG) begin
+                $fatal(2, "Found solution\n");
             end
+            perm_idle = perm_idle + !dut.gen_unit[0].single_unit.broadcast_valid;
+            if (cycles%1000000 == 0) begin
+                $write("Total cycles: %d\nSuccessful eliminations (estimate): %d\nPermutation idle (randomizing) for: %d\nGaussian idle for (estimate): %d\nCurrent state: %d\n", 
+                    cycles, eliminations*GAUS_UNITS, perm_idle, gauss_idle*GAUS_UNITS, dut.gen_unit[0].single_unit.gen_gauss[0].gauss.state);
+                $fflush();
+            end
+            eliminations = eliminations + (dut.gen_unit[0].single_unit.gen_gauss[0].gauss.state == dut.gen_unit[0].single_unit.gen_gauss[0].gauss.popcount_warmup);
+            gauss_idle = gauss_idle + (dut.gen_unit[0].single_unit.gen_gauss[0].gauss.state == dut.gen_unit[0].single_unit.gen_gauss[0].gauss.uninitialized);
         end
+        $write("Total cycles: %d\nSuccessful eliminations (estimate): %d\nPermutation idle (randomizing) for: %d\nGaussian idle for (estimate): %d\n", 
+            cycles, eliminations*GAUS_UNITS, perm_idle, gauss_idle*GAUS_UNITS);
         $finish();
     end
 endmodule

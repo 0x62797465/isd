@@ -11,7 +11,7 @@ module perm (
 
     output reg mat_bit,
     output reg transmit_bit,
-    output reg [$clog2(GAUS_UNITS)-1:0] broadcast_to,
+    output reg [GAUS_LOG2_SAFE-1:0] broadcast_to,
     output reg broadcast_valid_old
 );
 
@@ -45,24 +45,23 @@ end
 struct {
     reg [$clog2(WIDTH_MAT)-1:0] col_ptr;
     reg [$clog2(WIDTH_MAT)-1:0] col_old;
-    reg [$clog2(WIDTH_MAT/32):0] col_aligned; // extra bit since int div rounds down
 
     reg [$clog2(HEIGHT):0] row_ptr; // extra bits to account for logic behavior
     reg [$clog2(HEIGHT):0] row_old;
     reg [$clog2(HEIGHT):0] row_older;
 
-    reg [$clog2(HEIGHT*WORDS-1)-1:0] read_addr; 
-
     reg [31:0] read_buff;
 } mat;
-assign mat.col_aligned = mat.col_ptr/32; // word alignment
+
+wire [$clog2(HEIGHT*WORDS-1)-1:0] mat_read_addr;
+wire [$clog2(WIDTH_MAT/32):0] mat_col_aligned;
+assign mat_col_aligned = mat.col_ptr/32; // word alignment
 
 // (* multstyle = "dsp" *) // optional hint; may not be optimal to make DSPs since the multiplier is fixed
-always_comb
-    mat.read_addr = mat.row_ptr[$clog2(HEIGHT)-1:0]*WORDS+mat.col_aligned;
+assign mat_read_addr = mat.row_ptr[$clog2(HEIGHT)-1:0]*WORDS+mat_col_aligned;
 
 always_ff @(posedge clk) begin
-    mat.read_buff <= original_matrix[mat.read_addr];
+    mat.read_buff <= original_matrix[mat_read_addr];
 end
 
 // permutation r/w logic & registers
@@ -76,27 +75,26 @@ struct {
     
     reg [$clog2(WIDTH_MAT):0] write_ptr;
     reg [$clog2(SNAPSHOTS_AMOUNT)-1:0] write_unit;
-    reg [SNAPSHOTS_AMOUNT*WIDTH_MAT-1:0] p_write_addr;
 
     reg [$clog2(WIDTH_MAT):0] read_ptr;
     reg [$clog2(SNAPSHOTS_AMOUNT)-1:0] read_unit;
     reg [$clog2(WIDTH_MAT*16):0] read_unaligned;
-    reg [SNAPSHOTS_AMOUNT*WIDTH_MAT-1:0] p_read_addr;
     
     reg [GAUS_UNITS-1:0] [$clog2(SNAPSHOTS_AMOUNT)-1:0] rename_table;
     reg [$clog2(SNAPSHOTS_AMOUNT)-1:0] free_ptr;
 } perm;
 
-always_comb
-    perm.p_read_addr = perm.read_unit*WIDTH_MAT+perm.read_ptr;
+wire [SNAPSHOTS_AMOUNT*WIDTH_MAT-1:0] p_read_addr;
+wire [SNAPSHOTS_AMOUNT*WIDTH_MAT-1:0] p_write_addr;
 
-always_comb
-    perm.p_write_addr = perm.write_unit*WIDTH_MAT+perm.write_ptr;
+assign p_read_addr = perm.read_unit*WIDTH_MAT+perm.read_ptr;
+
+assign p_write_addr = perm.write_unit*WIDTH_MAT+perm.write_ptr;
 
 always_ff @(posedge clk) begin
-    perm.read_buff <= perm_snapshots[perm.p_read_addr];
+    perm.read_buff <= perm_snapshots[p_read_addr];
     if (perm.we)
-        perm_snapshots[perm.p_write_addr] <= perm.write_buff;
+        perm_snapshots[p_write_addr] <= perm.write_buff;
 end
 
 

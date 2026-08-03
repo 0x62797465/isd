@@ -1,7 +1,6 @@
 `include "params.svh"
 
 module prange (
-    input CLOCK_125_p,
     input CLOCK_50_B5B,
     input CPU_RESET_n,
     
@@ -119,7 +118,7 @@ module single_unit (
 reg mat_bit;
 reg [GAUS_UNITS-1:0] gauss_ready;
 reg [GAUS_UNITS-1:0] gauss_correct;
-reg [$clog2(GAUS_UNITS)-1:0] broadcast_to;
+reg [GAUS_LOG2_SAFE-1:0] broadcast_to;
 reg broadcast_valid;
 
 perm perm (.clk(clk), .reset(reset), .seed_base(seed_base), .ready(gauss_ready),
@@ -131,7 +130,7 @@ genvar i;
 generate
     for (i = 0; i < GAUS_UNITS; i++) begin : gen_gauss
         gauss gauss (.clk(clk), .reset(reset), .mat_bit(mat_bit),
-            .broadcast_to(broadcast_to), .broadcast_target(($clog2(GAUS_UNITS))'(i)), .broadcast_valid(broadcast_valid),
+            .broadcast_to(broadcast_to), .broadcast_target((GAUS_LOG2_SAFE)'(i)), .broadcast_valid(broadcast_valid),
             .done(gauss_ready[i]), .correct(gauss_correct[i]));
     end
 endgenerate

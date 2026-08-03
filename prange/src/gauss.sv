@@ -4,8 +4,8 @@ module gauss (
     input clk,
     input reset,
     input mat_bit,
-    input [$clog2(GAUS_UNITS)-1:0] broadcast_to,
-    input [$clog2(GAUS_UNITS)-1:0] broadcast_target,
+    input [GAUS_LOG2_SAFE-1:0] broadcast_to,
+    input [GAUS_LOG2_SAFE-1:0] broadcast_target,
     input broadcast_valid,
 
     output reg done,
@@ -41,9 +41,6 @@ struct {
 
     reg [WORD_SIZE-1:0] w_buff;
     reg [WORD_SIZE-1:0] r_buff;
-
-    reg [$clog2(HEIGHT*WORDS)-1:0] w_addr;
-    reg [$clog2(HEIGHT*WORDS)-1:0] r_addr;
 } mat;
 
 wire [$clog2(WORDS)-1:0] w_col_aligned;
@@ -52,19 +49,17 @@ wire [$clog2(WORDS)-1:0] r_col_aligned;
 assign w_col_aligned = mat.w_col/WORD_SIZE;
 assign r_col_aligned = mat.r_col/WORD_SIZE;
 
-// (* multstyle = "dsp" *)
-always_comb
-    mat.w_addr = mat.w_row*WORDS+w_col_aligned;
+wire [$clog2(HEIGHT*WORDS)-1:0] w_addr;
+wire [$clog2(HEIGHT*WORDS)-1:0] r_addr;
 
-// (* multstyle = "dsp" *)
-always_comb
-    mat.r_addr = mat.r_row*WORDS+r_col_aligned;
+assign w_addr = mat.w_row*WORDS+w_col_aligned;
+assign r_addr = mat.r_row*WORDS+r_col_aligned;
 
 always_ff @(posedge clk) begin
     if (mat.we) begin
-        internal_mat[mat.w_addr] <= mat.w_buff;
+        internal_mat[w_addr] <= mat.w_buff;
     end
-    mat.r_buff <= internal_mat[mat.r_addr];
+    mat.r_buff <= internal_mat[r_addr];
 end 
 
 
