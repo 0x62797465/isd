@@ -11,7 +11,7 @@ The architecture is somewhat complex, so it is included in a separate write-up. 
 These were all run at around half of the Fmax (50MHz) and some runs had resource underutilization. The FPGA used was a Cyclone V GX Starter Kit. For more details regarding hardware parameters, refer to the benchmarking directory.   
  
 | Weight | n | Time |
-|-------:|-----:|-----:|
+|-----:|-----:|-----:|
 | 27 | 200 | 31.36 s |
 | 28 | 210 | 9.43 s |
 | 29 | 220 | 273.30 s |
@@ -23,5 +23,6 @@ These were all run at around half of the Fmax (50MHz) and some runs had resource
 | 35 | 280 | 785.67 min |
 
 ## Usage
-Go to releases to try the optimized C++ Prange algorithm. To try the hardware implementation, use the files in `prange/utils` to generate headers which are used to generate ROM sections. Afterward, adjust `params.svh` to reflect the weight, length, and the amount of units to use (utilize the testbenches to see how optimal your parameters are and if they break anything). You may also have to change the clock in `prange.sv`, make sure to change `params.svh` accordingly. Set `prange.sv` as your top-level file, include the other sv/svh files, and synthesize. Connect the UART cable to your computer, use sage to run the `permutation2error.py` script in utils, and you will eventually see the error vector printed out. The error will be sent repeatedly, so you may connect the UART cable after the FPGA finds the error.   
-
+Go to releases to try the optimized C++ Prange algorithm. To try the hardware implementation, use the files in `prange/utils` to generate headers which are used to generate ROM sections. Afterward, adjust `params.svh` to reflect the weight, length, and the amount of units to use (utilize the testbenches to see how optimal your parameters are and if they break anything). You may also have to change the clock in `prange.sv`, make sure to change `params.svh` accordingly. Set `prange.sv` as your top-level file, include the other sv/svh files, and synthesize. Connect the UART cable to your computer, use sage to run the `permutation2error.py` script in utils, and you will eventually see the error vector printed out. The error will be sent repeatedly, so you may connect the UART cable after the FPGA finds the error. 
+ 
+For example files, check the `examples` directory. Note that this example and several benchmark results assume the identity matrix is before the actual matrix.
