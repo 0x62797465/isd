@@ -1,7 +1,7 @@
 `include "../src/params.svh"
 
 module prange_tb;
-    localparam int iterations = 10000000;
+    localparam int iterations = 100000000;
 
     reg clk = 0;
     reg reset = 0;
@@ -21,8 +21,6 @@ module prange_tb;
         reset = 0;
         @(posedge clk);
         @(negedge clk);
-        assert (TOTAL_UNITS == 1)
-            else $fatal(0, "Please set total units to one in the header file\n");
         reset = 1;
         for (int i = 0; i < iterations; i++) begin
             @(posedge clk);
@@ -32,15 +30,15 @@ module prange_tb;
             end
             perm_idle = perm_idle + !dut.gen_unit[0].single_unit.broadcast_valid;
             if (cycles%1000000 == 0) begin
-                $write("Total cycles: %d\nSuccessful eliminations (estimate): %d\nPermutation idle (randomizing) for: %d\nGaussian idle for (estimate): %d\nCurrent state: %d\n", 
-                    cycles, eliminations*GAUS_UNITS, perm_idle, gauss_idle*GAUS_UNITS, dut.gen_unit[0].single_unit.gen_gauss[0].gauss.state);
+                $write("Total cycles: %d\nSuccessful total eliminations (estimate): %d\nPermutation idle (randomizing) for: %d\nGaussian idle for (estimate average): %d\nCurrent state: %d\n", 
+                    cycles, eliminations*GAUS_UNITS*TOTAL_UNITS, perm_idle, gauss_idle, dut.gen_unit[0].single_unit.gen_gauss[0].gauss.state);
                 $fflush();
             end
             eliminations = eliminations + (dut.gen_unit[0].single_unit.gen_gauss[0].gauss.state == dut.gen_unit[0].single_unit.gen_gauss[0].gauss.popcount_warmup);
             gauss_idle = gauss_idle + (dut.gen_unit[0].single_unit.gen_gauss[0].gauss.state == dut.gen_unit[0].single_unit.gen_gauss[0].gauss.uninitialized);
         end
         $write("Total cycles: %d\nSuccessful eliminations (estimate): %d\nPermutation idle (randomizing) for: %d\nGaussian idle for (estimate): %d\n", 
-            cycles, eliminations*GAUS_UNITS, perm_idle, gauss_idle*GAUS_UNITS);
+            cycles, eliminations*GAUS_UNITS*TOTAL_UNITS, perm_idle, gauss_idle);
         $finish();
     end
 endmodule
